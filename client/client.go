@@ -1,3 +1,4 @@
+// bare bones client implementation
 package main
 
 import (
@@ -8,7 +9,7 @@ import (
 )
 
 const (
-	defaultAddress string = "::"
+	defaultAddress string = "127.0.0.1"
 	defaultPort    string = "0"
 )
 
@@ -17,18 +18,18 @@ func main() {
 	port := flag.String("port", defaultPort, "port to connect to")
 	flag.Parse()
 
-	log.Print("ip: %s port: %s\n", *ip, *port)
+	log.Printf("ip: %s port: %s\n", *ip, *port)
 
 	address := *ip + ":" + *port
 
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
-		log.Fatal("Unable to connect to %s: %v\n", address, err)
+		log.Fatalf("Unable to connect to %s: %v\n", address, err)
 	}
 
 	fmt.Fprintf(conn, "TEST\n")
 
 	if err := conn.Close(); err != nil {
-		log.Fatal("Failed to close connection: %v\n", err)
+		log.Fatalf("Failed to close connection: %v\n", err)
 	}
 }
