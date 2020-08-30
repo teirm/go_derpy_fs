@@ -27,7 +27,7 @@ func main() {
 		log.Fatalf("Unable to connect to %s: %v\n", address, err)
 	}
 
-	fmt.Fprintf(conn, "TEST\n")
+	fmt.Fprintf(conn, "GET\r\nFoobar")
 
 	if err := conn.Close(); err != nil {
 		log.Fatalf("Failed to close connection: %v\n", err)
