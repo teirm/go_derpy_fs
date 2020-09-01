@@ -23,7 +23,7 @@ type Server struct {
 
 	handleChan chan net.Conn
 	ioChan     chan ClientData
-	respChan   chan int
+	respChan   chan ResponseData
 }
 
 type Operation uint64
@@ -55,7 +55,9 @@ func parseHeader(header string) (Operation, error) {
 	}
 }
 
-// handle a connection and parse operation
+// handle a connection and read client data
+// pass client data to io worker
+// on error pass error to response worker
 func handleConnection(connection net.Conn, svr Server) {
 
 	input := bufio.NewScanner(connection)
@@ -86,11 +88,6 @@ func handleConnection(connection net.Conn, svr Server) {
 		// now but it is easy.
 		clientData.data = input.Text()
 	}
-	if err := connection.Close(); err != nil {
-		log.Printf("ERROR: unable to close connection: %v\n", err)
-		//TODO don't close connection and handle error properly
-	}
-
 	svr.ioChan <- clientData
 }
 
@@ -98,6 +95,26 @@ func handleConnection(connection net.Conn, svr Server) {
 func handleIO(data ClientData) {
 	log.Print("Unimplemented right now\n")
 	log.Print(data.data)
+}
+
+// Send the response and close the connection
+func sendResponse(response ResponseData) {
+
+	messageLength := len(response.message)
+
+	for messageLength > 0 {
+		bytesSent, err := fmt.Fprintln(response.conn, response.message)
+		if err != nil {
+			log.Printf("Error: Unable to send message response\n")
+			break
+		}
+		messageLength -= bytesSent
+	}
+	// close the connection
+	if err := connection.Close(); err != nil {
+		log.Printf("ERROR: unable to close connection: %v\n", err)
+		//TODO don't close connection and handle error properly
+	}
 }
 
 // initialize all workers for server communication
@@ -112,7 +129,7 @@ func initServer(address string) (Server, error) {
 
 	s.handleChan = make(chan net.Conn)
 	s.ioChan = make(chan ClientData)
-	s.respChan = make(chan int)
+	s.respChan = make(chan ResponseData)
 
 	for i := 0; i < handleConnWorkers; i++ {
 		go func(svr Server) {
@@ -126,6 +143,14 @@ func initServer(address string) (Server, error) {
 		go func(svr Server) {
 			for data := range svr.ioChan {
 				handleIO(data)
+			}
+		}(s)
+	}
+
+	for i := 0; i < respWorkers; i++ {
+		go func(svr Server) {
+			for resp := range svr.respChan {
+				sendResponse(resp)
 			}
 		}(s)
 	}
