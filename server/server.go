@@ -58,21 +58,19 @@ func parseHeader(header string) (Operation, error) {
 // handle a connection and read client data
 // pass client data to io worker
 // on error pass error to response worker
-func handleConnection(connection net.Conn, svr Server) {
+func handleConnection(connection net.Conn, svr Server) error {
 
 	input := bufio.NewScanner(connection)
 	// parse the header for the opertion type first
 	input.Scan()
 	if err := input.Err(); err != nil {
-		log.Printf("ERROR: failed to read header: %v\n", err)
-		//TODO handle error
+		return fmt.Errorf("failed to read header: %v\n", err)
 	}
 
 	var clientData ClientData
 	op, err := parseHeader(input.Text())
 	if err != nil {
-		log.Printf("ERROR: unable to parse header: %v\n", err)
-		//TODO handle error
+		return fmt.Errorf("failed to parse header: %v\n", err)
 	}
 	log.Printf("Received OP: %d\n", op)
 
@@ -80,15 +78,19 @@ func handleConnection(connection net.Conn, svr Server) {
 
 	for input.Scan() {
 		if err := input.Err(); err != nil {
-			log.Printf("ERROR: processing input: %v\n", err)
-			//TODO handle error
 			break
 		}
 		// this is probably horribly inefficient right
 		// now but it is easy.
 		clientData.data = input.Text()
 	}
+
+	if err != nil {
+		return fmt.Errorf("error processing input: %v\n", err)
+	}
+
 	svr.ioChan <- clientData
+	return nil
 }
 
 // Do the IO portion
@@ -111,9 +113,8 @@ func sendResponse(response ResponseData) {
 		messageLength -= bytesSent
 	}
 	// close the connection
-	if err := connection.Close(); err != nil {
+	if err := response.conn.Close(); err != nil {
 		log.Printf("ERROR: unable to close connection: %v\n", err)
-		//TODO don't close connection and handle error properly
 	}
 }
 
@@ -134,7 +135,11 @@ func initServer(address string) (Server, error) {
 	for i := 0; i < handleConnWorkers; i++ {
 		go func(svr Server) {
 			for conn := range svr.handleChan {
-				handleConnection(conn, s)
+				err := handleConnection(conn, s)
+				if err != nil {
+					log.Printf(err.Error())
+					svr.respChan <- ResponseData{err.Error(), conn}
+				}
 			}
 		}(s)
 	}
