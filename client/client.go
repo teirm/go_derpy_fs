@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"log"
@@ -27,7 +28,19 @@ func main() {
 		log.Fatalf("Unable to connect to %s: %v\n", address, err)
 	}
 
-	fmt.Fprintf(conn, "GET\r\nFoobar")
+	fmt.Fprintf(conn, "GET\r\nFoobar\n<END>\n")
+
+	// read any response from the server
+	input := bufio.NewScanner(conn)
+	for input.Scan() {
+		if err := input.Err(); err != nil {
+			break
+		}
+		fmt.Println(input.Text())
+	}
+	if err != nil {
+		log.Fatalf("Error reading from connection: %v\n", err)
+	}
 
 	if err := conn.Close(); err != nil {
 		log.Fatalf("Failed to close connection: %v\n", err)

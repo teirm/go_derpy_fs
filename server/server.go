@@ -75,6 +75,7 @@ func handleConnection(connection net.Conn, svr Server) error {
 	log.Printf("Received OP: %d\n", op)
 
 	clientData.op = op
+	clientData.conn = connection
 
 	for input.Scan() {
 		if err := input.Err(); err != nil {
@@ -82,6 +83,9 @@ func handleConnection(connection net.Conn, svr Server) error {
 		}
 		// this is probably horribly inefficient right
 		// now but it is easy.
+		if input.Text() == "<END>" {
+			break
+		}
 		clientData.data = input.Text()
 	}
 
@@ -94,14 +98,15 @@ func handleConnection(connection net.Conn, svr Server) error {
 }
 
 // Do the IO portion
-func handleIO(data ClientData) {
+func handleIO(data ClientData, svr Server) {
 	log.Print("Unimplemented right now\n")
 	log.Print(data.data)
+
+	svr.respChan <- ResponseData{"Did nothing!", data.conn}
 }
 
 // Send the response and close the connection
 func sendResponse(response ResponseData) {
-
 	messageLength := len(response.message)
 
 	for messageLength > 0 {
@@ -132,6 +137,7 @@ func initServer(address string) (Server, error) {
 	s.ioChan = make(chan ClientData)
 	s.respChan = make(chan ResponseData)
 
+	log.Printf("Creating conn workers\n")
 	for i := 0; i < handleConnWorkers; i++ {
 		go func(svr Server) {
 			for conn := range svr.handleChan {
@@ -144,14 +150,16 @@ func initServer(address string) (Server, error) {
 		}(s)
 	}
 
+	log.Printf("Creating io workers\n")
 	for i := 0; i < ioWorkers; i++ {
 		go func(svr Server) {
 			for data := range svr.ioChan {
-				handleIO(data)
+				handleIO(data, s)
 			}
 		}(s)
 	}
 
+	log.Printf("Creating response workers\n")
 	for i := 0; i < respWorkers; i++ {
 		go func(svr Server) {
 			for resp := range svr.respChan {
