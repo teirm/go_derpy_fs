@@ -8,6 +8,8 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"os"
+	"path"
 	"strconv"
 	"strings"
 
@@ -23,6 +25,9 @@ const (
 
 	headerFields int    = 3
 	headerDelim  string = ":"
+
+	accountRoot  string      = "/tmp"
+	defaultPerms os.FileMode = 0644
 )
 
 type Server struct {
@@ -82,9 +87,9 @@ func parseHeader(header string) (protocol.Header, error) {
 // Check if the received operation is valid
 func checkOperation(operation string) error {
 	switch operation {
-	case "GET":
-		return nil
 	case "CREATE":
+		return nil
+	case "READ":
 		return nil
 	case "WRITE":
 		return nil
@@ -138,19 +143,100 @@ func handleConnection(connection net.Conn, svr Server) error {
 	return nil
 }
 
-// Do the IO portion
+// Perform the requested server side IO operation
+// and produce an error or response for the client
 func handleIO(data ClientData, svr Server) error {
 
-	fileName := data.header.FileName
-	err := ioutil.WriteFile(fileName, []byte(data.data), 0644)
+	op := data.header.Operation
+
+	var res string
+	var err error
+	switch op {
+	case "CREATE":
+		res, err = createAccount(data)
+	case "WRITE":
+		res, err = writeFile(data)
+	case "READ":
+		res, err = readFile(data)
+	case "DELETE":
+		res, err = deleteFile(data)
+	case "LIST":
+		res, err = listFiles(data)
+	default:
+		// probably should be a panic -- this would be a programmer
+		// error
+		return fmt.Errorf("Invalid operation: %s", op)
+	}
 	if err != nil {
 		return err
 	}
 
-	message := fmt.Sprintf("Wrote data to %s", fileName)
-	response := ResponseData{message, data.conn}
-	svr.respChan <- response
+	svr.respChan <- ResponseData{res, data.conn}
 	return nil
+}
+
+// Check if the given path exists or not
+func checkExistence(path string) (bool, error) {
+	fileInfo, err := os.Stat(path)
+	if err == nil {
+		return true
+	}
+
+	if os.IsNotExist(err) == true {
+		return false, nil
+	}
+
+	// an error occured with stat
+	return false, err
+}
+
+// Create a new account for the given identity
+//
+// By definition, an account will just be a
+// new directory
+func createAccount(data ClientData) (string, error) {
+	identity := data.header.Identity
+	accountPath := path.Join(accountRoot, identity)
+	exists, err := checkExistence(accountPath)
+	if err != nil {
+		return "", err
+	}
+	if exists == true {
+		err := fmt.Errorf("%s already exists", identity)
+		return "", err
+	}
+
+	err = os.Mkdir(accountPath, defaultPerms)
+	if err != nil {
+		return "", err
+	}
+
+	resp := fmt.Sprintf("account created: %s", identity)
+	return resp, nil
+}
+
+// Write a file under the given account
+//
+// Write will fail if the file exists already
+func writeFile(data ClientData) (string, error) {
+	identity := data.header.Identity
+	fileName := data.header.FileName
+	filePath := path.Join(accountRoot, identity, fileName)
+	exists, err := checkExistence(filePath)
+	if err != nil {
+		return "", err
+	}
+	if exists == true {
+		err := fmt.Errorf("%s already exists", fileName)
+	}
+
+	err = ioutil.WriteFile(filePath, []byte(data.data), defaultPerms)
+	if err != nil {
+		return "", err
+	}
+
+	resp := fmt.Sprintf("wrote file: %s\n", fileName)
+	return resp, nil
 }
 
 // Send the response and close the connection
