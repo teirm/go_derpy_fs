@@ -57,20 +57,44 @@ type ResponseData struct {
 //
 // Note: Size does not include the size of the header
 func parseHeader(header string) (protocol.Header, error) {
-
 	fields := strings.Split(header, ":")
 	if len(fields) != headerFields {
-		return protocol.Header{}, fmt.Errorf("invalid header: %s header", header)
+		err := fmt.Errorf("invalid header: %s", header)
+		return protocol.Header{}, err
 	}
 
 	operation := fields[0]
-	fileName := fields[1]
-	size, err := strconv.ParseUint(fields[2], 10, 64)
+	identity := fields[1]
+	fileName := fields[2]
+	size, err := strconv.ParseUint(fields[3], 10, 64)
 	if err != nil {
 		return protocol.Header{}, err
 	}
 
-	return protocol.Header{operation, fileName, size}, nil
+	err = checkOperation(operation)
+	if err != nil {
+		return protocol.Header{}, err
+	}
+
+	return protocol.Header{operation, identity, fileName, size}, nil
+}
+
+// Check if the received operation is valid
+func checkOperation(operation string) error {
+	switch operation {
+	case "GET":
+		return nil
+	case "CREATE":
+		return nil
+	case "WRITE":
+		return nil
+	case "DELETE":
+		return nil
+	case "LIST":
+		return nil
+	default:
+		return fmt.Errorf("Invalid operation: %s", operation)
+	}
 }
 
 // handle a connection and read client data
@@ -208,7 +232,7 @@ func main() {
 	// create address
 	address := ":" + *port
 
-	serverInst, err := initServer(address)
+	server, err := initServer(address)
 	if err != nil {
 		log.Fatalf("Failed to create server: %v\n", err)
 	}
@@ -216,13 +240,14 @@ func main() {
 	log.Printf("listening for connections on %s...\n", address)
 	// listen for incoming connections
 	for {
-		connection, err := serverInst.listener.Accept()
+		connection, err := server.listener.Accept()
 		if err != nil {
 			log.Fatalf("Failed to accept connection: %v\n", err)
 		}
 
-		log.Printf("Received connection from %s\n", connection.RemoteAddr().String())
+		log.Printf("Received connection from %s\n",
+			connection.RemoteAddr().String())
 		// spawn a go routine to handle the connection
-		serverInst.handleChan <- connection
+		server.handleChan <- connection
 	}
 }
