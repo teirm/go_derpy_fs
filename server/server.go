@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/teirm/journal_app/protocol"
+	"github.com/teirm/go_derpy_fs/protocol"
 )
 
 const (
