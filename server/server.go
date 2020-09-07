@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 )
@@ -81,7 +82,7 @@ func handleConnection(connection net.Conn, svr Server) error {
 		if err := input.Err(); err != nil {
 			break
 		}
-		// this is probably horribly inefficient right
+		// this is horribly inefficient / dangerous right
 		// now but it is easy.
 		if input.Text() == "<END>" {
 			break
@@ -98,11 +99,18 @@ func handleConnection(connection net.Conn, svr Server) error {
 }
 
 // Do the IO portion
-func handleIO(data ClientData, svr Server) {
-	log.Print("Unimplemented right now\n")
-	log.Print(data.data)
+func handleIO(data ClientData, svr Server) error {
 
-	svr.respChan <- ResponseData{"Did nothing!", data.conn}
+	fileName := "/tmp/testfile"
+	err := ioutil.WriteFile(fileName, []byte(data.data), 0644)
+	if err != nil {
+		return err
+	}
+
+	message := fmt.Sprintf("Wrote data to %s", fileName)
+	response := ResponseData{message, data.conn}
+	svr.respChan <- response
+	return nil
 }
 
 // Send the response and close the connection
@@ -154,7 +162,11 @@ func initServer(address string) (Server, error) {
 	for i := 0; i < ioWorkers; i++ {
 		go func(svr Server) {
 			for data := range svr.ioChan {
-				handleIO(data, s)
+				err := handleIO(data, s)
+				if err != nil {
+					log.Printf(err.Error())
+					svr.respChan <- ResponseData{err.Error(), data.conn}
+				}
 			}
 		}(s)
 	}
