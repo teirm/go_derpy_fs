@@ -177,9 +177,9 @@ func handleIO(data ClientData, svr Server) error {
 
 // Check if the given path exists or not
 func checkExistence(path string) (bool, error) {
-	fileInfo, err := os.Stat(path)
+	_, err := os.Stat(path)
 	if err == nil {
-		return true
+		return true, nil
 	}
 
 	if os.IsNotExist(err) == true {
@@ -195,14 +195,14 @@ func checkExistence(path string) (bool, error) {
 // By definition, an account will just be a
 // new directory
 func createAccount(data ClientData) (string, error) {
-	identity := data.header.Identity
-	accountPath := path.Join(accountRoot, identity)
+	account := data.header.Account
+	accountPath := path.Join(accountRoot, account)
 	exists, err := checkExistence(accountPath)
 	if err != nil {
 		return "", err
 	}
 	if exists == true {
-		err := fmt.Errorf("%s already exists", identity)
+		err := fmt.Errorf("%s already exists", account)
 		return "", err
 	}
 
@@ -211,7 +211,7 @@ func createAccount(data ClientData) (string, error) {
 		return "", err
 	}
 
-	resp := fmt.Sprintf("account created: %s", identity)
+	resp := fmt.Sprintf("account created: %s", account)
 	return resp, nil
 }
 
@@ -219,23 +219,69 @@ func createAccount(data ClientData) (string, error) {
 //
 // Write will fail if the file exists already
 func writeFile(data ClientData) (string, error) {
-	identity := data.header.Identity
+	account := data.header.Account
 	fileName := data.header.FileName
-	filePath := path.Join(accountRoot, identity, fileName)
-	exists, err := checkExistence(filePath)
-	if err != nil {
-		return "", err
-	}
-	if exists == true {
-		err := fmt.Errorf("%s already exists", fileName)
-	}
+	filePath := path.Join(accountRoot, account, fileName)
 
-	err = ioutil.WriteFile(filePath, []byte(data.data), defaultPerms)
+	err := ioutil.WriteFile(filePath, []byte(data.data), defaultPerms)
 	if err != nil {
 		return "", err
 	}
 
 	resp := fmt.Sprintf("wrote file: %s\n", fileName)
+	return resp, nil
+}
+
+// Read a file under the given account
+//
+// Read will fail if the file does not exist
+func readFile(data ClientData) (string, error) {
+	account := data.header.Account
+	fileName := data.header.FileName
+	filePath := path.Join(accountRoot, account, fileName)
+
+	fileData, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		return "", err
+	}
+
+	//TODO if the data is not a string -- this is wrong
+	return string(fileData), nil
+}
+
+// Delete a file under the given account
+//
+// Delete will fial if the file does not exist
+func deleteFile(data ClientData) (string, error) {
+	account := data.header.Account
+	fileName := data.header.FileName
+	filePath := path.Join(accountRoot, account, fileName)
+
+	err := os.Remove(filePath)
+	if err != nil {
+		return "", err
+	}
+
+	resp := fmt.Sprintf("deleted %s", fileName)
+	return resp, nil
+}
+
+// List files under an account
+//
+// List will fail if the account is not present
+func listFiles(data ClientData) (string, error) {
+	account := data.header.Account
+	accountPath := path.Join(accountRoot, account)
+
+	files, err := ioutil.ReadDir(accountPath)
+	if err != nil {
+		return "", err
+	}
+
+	var resp string
+	for _, file := range files {
+		resp = resp + file.Name() + "\n"
+	}
 	return resp, nil
 }
 
