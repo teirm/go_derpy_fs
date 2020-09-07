@@ -10,6 +10,8 @@ import (
 	"net"
 	"strconv"
 	"strings"
+
+	"github.com/teirm/journal_app/protocol"
 )
 
 const (
@@ -32,7 +34,7 @@ type Server struct {
 }
 
 type ClientData struct {
-	header Header
+	header protocol.Header
 	data   string
 	conn   net.Conn
 }
@@ -40,12 +42,6 @@ type ClientData struct {
 type ResponseData struct {
 	message string
 	conn    net.Conn
-}
-
-type Header struct {
-	operation string
-	fileName  string
-	size      uint64
 }
 
 // Parse the header information read from the client
@@ -60,22 +56,21 @@ type Header struct {
 //   size		uint64
 //
 // Note: Size does not include the size of the header
-func parseHeader(header string) (Header, error) {
+func parseHeader(header string) (protocol.Header, error) {
 
 	fields := strings.Split(header, ":")
 	if len(fields) != headerFields {
-		return Header{}, fmt.Errorf("invalid header: %s header", header)
+		return protocol.Header{}, fmt.Errorf("invalid header: %s header", header)
 	}
 
 	operation := fields[0]
 	fileName := fields[1]
 	size, err := strconv.ParseUint(fields[2], 10, 64)
-
 	if err != nil {
-		return Header{}, err
+		return protocol.Header{}, err
 	}
 
-	return Header{operation, fileName, size}, nil
+	return protocol.Header{operation, fileName, size}, nil
 }
 
 // handle a connection and read client data
@@ -122,7 +117,7 @@ func handleConnection(connection net.Conn, svr Server) error {
 // Do the IO portion
 func handleIO(data ClientData, svr Server) error {
 
-	fileName := data.header.fileName
+	fileName := data.header.FileName
 	err := ioutil.WriteFile(fileName, []byte(data.data), 0644)
 	if err != nil {
 		return err
