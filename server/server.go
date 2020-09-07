@@ -8,15 +8,19 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"strconv"
+	"strings"
 )
 
 const (
-	defaultPort       string = "0"
-	handleConnWorkers int    = 3
-	ioWorkers         int    = 3
-	respWorkers       int    = 3
+	defaultPort string = "0"
 
-	GetOperation Operation = 0
+	handleConnWorkers int = 3
+	ioWorkers         int = 3
+	respWorkers       int = 3
+
+	headerFields int    = 3
+	headerDelim  string = ":"
 )
 
 type Server struct {
@@ -27,12 +31,10 @@ type Server struct {
 	respChan   chan ResponseData
 }
 
-type Operation uint64
-
 type ClientData struct {
-	op   Operation
-	data string
-	conn net.Conn
+	header Header
+	data   string
+	conn   net.Conn
 }
 
 type ResponseData struct {
@@ -40,20 +42,40 @@ type ResponseData struct {
 	conn    net.Conn
 }
 
-// parse the header information read from the client
-// connection
+type Header struct {
+	operation string
+	fileName  string
+	size      uint64
+}
+
+// Parse the header information read from the client
+// connection.
 //
 // Header Format:
-//   Operation	string
-func parseHeader(header string) (Operation, error) {
+//
+//   operation:filename:size
+//
+//   operation	string
+//	 fileName	string
+//   size		uint64
+//
+// Note: Size does not include the size of the header
+func parseHeader(header string) (Header, error) {
 
-	switch header {
-	case "GET":
-		log.Print("Received GET Operation\n")
-		return GetOperation, nil
-	default:
-		return 0, fmt.Errorf("invalid operation: %s", header)
+	fields := strings.Split(header, ":")
+	if len(fields) != headerFields {
+		return Header{}, fmt.Errorf("invalid header: %s header", header)
 	}
+
+	operation := fields[0]
+	fileName := fields[1]
+	size, err := strconv.ParseUint(fields[2], 10, 64)
+
+	if err != nil {
+		return Header{}, err
+	}
+
+	return Header{operation, fileName, size}, nil
 }
 
 // handle a connection and read client data
@@ -69,13 +91,12 @@ func handleConnection(connection net.Conn, svr Server) error {
 	}
 
 	var clientData ClientData
-	op, err := parseHeader(input.Text())
+	header, err := parseHeader(input.Text())
 	if err != nil {
 		return fmt.Errorf("failed to parse header: %v\n", err)
 	}
-	log.Printf("Received OP: %d\n", op)
 
-	clientData.op = op
+	clientData.header = header
 	clientData.conn = connection
 
 	for input.Scan() {
@@ -101,7 +122,7 @@ func handleConnection(connection net.Conn, svr Server) error {
 // Do the IO portion
 func handleIO(data ClientData, svr Server) error {
 
-	fileName := "/tmp/testfile"
+	fileName := data.header.fileName
 	err := ioutil.WriteFile(fileName, []byte(data.data), 0644)
 	if err != nil {
 		return err

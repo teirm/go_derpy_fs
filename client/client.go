@@ -28,7 +28,7 @@ func main() {
 		log.Fatalf("Unable to connect to %s: %v\n", address, err)
 	}
 
-	fmt.Fprintf(conn, "GET\r\nFoobar\n<END>\n")
+	fmt.Fprintf(conn, "GET:/tmp/test:6\nFoobar\n<END>\n")
 
 	// read any response from the server
 	input := bufio.NewScanner(conn)
