@@ -5,7 +5,7 @@ package protocol
 
 type Header struct {
 	Operation string
-	Identity  string
+	Account   string
 	FileName  string
 	Size      uint64
 }
