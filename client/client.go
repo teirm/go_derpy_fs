@@ -7,12 +7,22 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strconv"
+	"strings"
 )
 
 const (
 	defaultAddress string = "127.0.0.1"
 	defaultPort    string = "0"
 )
+
+// Create a header
+func createHeader(op string, account string, fileName string, size uint64) string {
+	sizeStr := strconv.FormatUint(size, 64)
+	s := []string{op, account, fileName, sizeStr}
+
+	return strings.Join(s, ":")
+}
 
 func main() {
 	ip := flag.String("address", defaultAddress, "address to connect to")

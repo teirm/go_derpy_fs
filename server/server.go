@@ -30,6 +30,7 @@ const (
 	defaultPerms os.FileMode = 0644
 )
 
+// Server instance containing channels and connections
 type Server struct {
 	listener net.Listener
 
@@ -38,12 +39,14 @@ type Server struct {
 	respChan   chan ResponseData
 }
 
+// ClientData Information read from the client
 type ClientData struct {
 	header protocol.Header
 	data   string
 	conn   net.Conn
 }
 
+// ResponseData Information to return to the client
 type ResponseData struct {
 	message string
 	conn    net.Conn
@@ -57,6 +60,7 @@ type ResponseData struct {
 //   operation:filename:size
 //
 //   operation	string
+//   account	string
 //	 fileName	string
 //   size		uint64
 //
@@ -111,13 +115,13 @@ func handleConnection(connection net.Conn, svr Server) error {
 	// parse the header for the opertion type first
 	input.Scan()
 	if err := input.Err(); err != nil {
-		return fmt.Errorf("failed to read header: %v\n", err)
+		return fmt.Errorf("failed to read header: %v", err)
 	}
 
 	var clientData ClientData
 	header, err := parseHeader(input.Text())
 	if err != nil {
-		return fmt.Errorf("failed to parse header: %v\n", err)
+		return fmt.Errorf("failed to parse header: %v", err)
 	}
 
 	clientData.header = header
@@ -136,7 +140,7 @@ func handleConnection(connection net.Conn, svr Server) error {
 	}
 
 	if err != nil {
-		return fmt.Errorf("error processing input: %v\n", err)
+		return fmt.Errorf("error processing input: %v", err)
 	}
 
 	svr.ioChan <- clientData
