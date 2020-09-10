@@ -2,11 +2,10 @@
 package main
 
 import (
-	"bufio"
 	"flag"
-	"fmt"
 	"log"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -16,43 +15,66 @@ const (
 	defaultPort    string = "0"
 )
 
+type ClientConfig struct {
+	ip          *string
+	port        *string
+	op          *string
+	file        *string
+	interactive *bool
+}
+
+type ClientState struct {
+	conn net.Conn
+}
+
 // Create a header
 func createHeader(op string, account string, fileName string, size uint64) string {
 	sizeStr := strconv.FormatUint(size, 64)
 	s := []string{op, account, fileName, sizeStr}
-
 	return strings.Join(s, ":")
 }
 
+// create conection to server
+func connect(ip string, port string) (net.Conn, error) {
+	address := ip + ":" + port
+	return net.Dial("tcp", address)
+}
+
+// initialize and start client
+func startClient(config ClientConfig) error {
+	var client ClientState
+	var err error
+
+	client.conn, err = connect(*config.ip, *config.port)
+	if err != nil {
+		log.Printf("unable to connect to server: %v\n", err)
+		return err
+	}
+
+	if config.interactive == false {
+		// handle non interactive sessions
+	} else {
+		// start an interactive session
+		// with channels
+	}
+
+	return nil
+}
+
 func main() {
-	ip := flag.String("address", defaultAddress, "address to connect to")
-	port := flag.String("port", defaultPort, "port to connect to")
+	var config ClientConfig
+	config.ip = flag.String("address", defaultAddress, "address to connect to")
+	config.port = flag.String("port", defaultPort, "port to connect to")
+	config.op = flag.String("op", "NOOP", "operation to perform")
+	config.file = flag.String("file-name", "", "file to read or write into")
+	config.interactive = flag.Bool("interactive", false, "start an interactice session")
+
 	flag.Parse()
 
-	log.Printf("ip: %s port: %s\n", *ip, *port)
-
-	address := *ip + ":" + *port
-
-	conn, err := net.Dial("tcp", address)
+	err := startClient(config)
 	if err != nil {
-		log.Fatalf("Unable to connect to %s: %v\n", address, err)
-	}
-
-	fmt.Fprintf(conn, "GET:/tmp/test:6\nFoobar\n<END>\n")
-
-	// read any response from the server
-	input := bufio.NewScanner(conn)
-	for input.Scan() {
-		if err := input.Err(); err != nil {
-			break
-		}
-		fmt.Println(input.Text())
-	}
-	if err != nil {
-		log.Fatalf("Error reading from connection: %v\n", err)
-	}
-
-	if err := conn.Close(); err != nil {
-		log.Fatalf("Failed to close connection: %v\n", err)
+		os.Exit(1)
+	} else {
+		os.Exit(0)
 	}
 }
