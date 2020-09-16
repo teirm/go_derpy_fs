@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/teirm/go_derpy_fs/protocol"
+	"github.com/teirm/go_derpy_fs/common"
 )
 
 const (
@@ -41,7 +41,7 @@ type Server struct {
 
 // ClientData Information read from the client
 type ClientData struct {
-	header protocol.Header
+	header common.Header
 	data   string
 	conn   net.Conn
 }
@@ -65,11 +65,11 @@ type ResponseData struct {
 //   size		uint64
 //
 // Note: Size does not include the size of the header
-func parseHeader(header string) (protocol.Header, error) {
+func parseHeader(header string) (common.Header, error) {
 	fields := strings.Split(header, ":")
 	if len(fields) != headerFields {
 		err := fmt.Errorf("invalid header: %s", header)
-		return protocol.Header{}, err
+		return common.Header{}, err
 	}
 
 	operation := fields[0]
@@ -77,33 +77,15 @@ func parseHeader(header string) (protocol.Header, error) {
 	fileName := fields[2]
 	size, err := strconv.ParseUint(fields[3], 10, 64)
 	if err != nil {
-		return protocol.Header{}, err
+		return common.Header{}, err
 	}
 
-	err = checkOperation(operation)
+	err = common.CheckOperation(operation)
 	if err != nil {
-		return protocol.Header{}, err
+		return common.Header{}, err
 	}
 
-	return protocol.Header{operation, identity, fileName, size}, nil
-}
-
-// Check if the received operation is valid
-func checkOperation(operation string) error {
-	switch operation {
-	case "CREATE":
-		return nil
-	case "READ":
-		return nil
-	case "WRITE":
-		return nil
-	case "DELETE":
-		return nil
-	case "LIST":
-		return nil
-	default:
-		return fmt.Errorf("Invalid operation: %s", operation)
-	}
+	return common.Header{operation, identity, fileName, size}, nil
 }
 
 // handle a connection and read client data

@@ -8,6 +8,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/teirm/go_derpy_fs/common"
 )
 
 const (
@@ -18,6 +20,7 @@ const (
 type ClientConfig struct {
 	ip          *string
 	port        *string
+	account     *string
 	op          *string
 	file        *string
 	interactive *bool
@@ -51,8 +54,11 @@ func startClient(config ClientConfig) error {
 		return err
 	}
 
-	if config.interactive == false {
-		// handle non interactive sessions
+	if *config.interactive == false {
+		if *config.account == "" {
+			return fmt.Errorf("invalid account name %s", *config.account)
+		}
+
 	} else {
 		// start an interactive session
 		// with channels
@@ -65,6 +71,7 @@ func main() {
 	var config ClientConfig
 	config.ip = flag.String("address", defaultAddress, "address to connect to")
 	config.port = flag.String("port", defaultPort, "port to connect to")
+	config.port = flag.String("account", "", "account to access")
 	config.op = flag.String("op", "NOOP", "operation to perform")
 	config.file = flag.String("file-name", "", "file to read or write into")
 	config.interactive = flag.Bool("interactive", false, "start an interactice session")
