@@ -3,6 +3,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -28,6 +29,7 @@ type ClientConfig struct {
 
 type ClientState struct {
 	conn net.Conn
+	ioCh chan string
 }
 
 // Create a header
@@ -43,6 +45,18 @@ func connect(ip string, port string) (net.Conn, error) {
 	return net.Dial("tcp", address)
 }
 
+// handle a non-interactive session
+func nonInteractiveSession(config ClientConfig, client ClientState) error {
+	if *config.account == "" {
+		return fmt.Errorf("invalid account name: %s", *config.account)
+	}
+
+	if err := common.CheckOperation(*config.op); err != nil {
+		return err
+	}
+	return nil
+}
+
 // initialize and start client
 func startClient(config ClientConfig) error {
 	var client ClientState
@@ -55,10 +69,11 @@ func startClient(config ClientConfig) error {
 	}
 
 	if *config.interactive == false {
-		if *config.account == "" {
-			return fmt.Errorf("invalid account name %s", *config.account)
-		}
-
+		// there is no reason for the non-interactive
+		// session to not setup multiple channels and
+		// pipline work just like an interactive session would
+		// the only difference is that it would block.
+		err = nonInteractiveSession(config, client)
 	} else {
 		// start an interactive session
 		// with channels

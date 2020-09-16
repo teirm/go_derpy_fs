@@ -35,21 +35,8 @@ type Server struct {
 	listener net.Listener
 
 	handleChan chan net.Conn
-	ioChan     chan ClientData
-	respChan   chan ResponseData
-}
-
-// ClientData Information read from the client
-type ClientData struct {
-	header common.Header
-	data   string
-	conn   net.Conn
-}
-
-// ResponseData Information to return to the client
-type ResponseData struct {
-	message string
-	conn    net.Conn
+	ioChan     chan common.ClientData
+	respChan   chan common.ResponseData
 }
 
 // Parse the header information read from the client
@@ -100,14 +87,14 @@ func handleConnection(connection net.Conn, svr Server) error {
 		return fmt.Errorf("failed to read header: %v", err)
 	}
 
-	var clientData ClientData
+	var clientData common.ClientData
 	header, err := parseHeader(input.Text())
 	if err != nil {
 		return fmt.Errorf("failed to parse header: %v", err)
 	}
 
-	clientData.header = header
-	clientData.conn = connection
+	clientData.Header = header
+	clientData.Conn = connection
 
 	for input.Scan() {
 		if err := input.Err(); err != nil {
@@ -118,7 +105,7 @@ func handleConnection(connection net.Conn, svr Server) error {
 		if input.Text() == "<END>" {
 			break
 		}
-		clientData.data = input.Text()
+		clientData.Data = input.Text()
 	}
 
 	if err != nil {
@@ -131,9 +118,9 @@ func handleConnection(connection net.Conn, svr Server) error {
 
 // Perform the requested server side IO operation
 // and produce an error or response for the client
-func handleIO(data ClientData, svr Server) error {
+func handleIO(data common.ClientData, svr Server) error {
 
-	op := data.header.Operation
+	op := data.Header.Operation
 
 	var res string
 	var err error
@@ -157,7 +144,7 @@ func handleIO(data ClientData, svr Server) error {
 		return err
 	}
 
-	svr.respChan <- ResponseData{res, data.conn}
+	svr.respChan <- common.ResponseData{res, data.Conn}
 	return nil
 }
 
@@ -180,8 +167,8 @@ func checkExistence(path string) (bool, error) {
 //
 // By definition, an account will just be a
 // new directory
-func createAccount(data ClientData) (string, error) {
-	account := data.header.Account
+func createAccount(data common.ClientData) (string, error) {
+	account := data.Header.Account
 	accountPath := path.Join(accountRoot, account)
 	exists, err := checkExistence(accountPath)
 	if err != nil {
@@ -204,12 +191,12 @@ func createAccount(data ClientData) (string, error) {
 // Write a file under the given account
 //
 // Write will fail if the file exists already
-func writeFile(data ClientData) (string, error) {
-	account := data.header.Account
-	fileName := data.header.FileName
+func writeFile(data common.ClientData) (string, error) {
+	account := data.Header.Account
+	fileName := data.Header.FileName
 	filePath := path.Join(accountRoot, account, fileName)
 
-	err := ioutil.WriteFile(filePath, []byte(data.data), defaultPerms)
+	err := ioutil.WriteFile(filePath, []byte(data.Data), defaultPerms)
 	if err != nil {
 		return "", err
 	}
@@ -221,9 +208,9 @@ func writeFile(data ClientData) (string, error) {
 // Read a file under the given account
 //
 // Read will fail if the file does not exist
-func readFile(data ClientData) (string, error) {
-	account := data.header.Account
-	fileName := data.header.FileName
+func readFile(data common.ClientData) (string, error) {
+	account := data.Header.Account
+	fileName := data.Header.FileName
 	filePath := path.Join(accountRoot, account, fileName)
 
 	fileData, err := ioutil.ReadFile(filePath)
@@ -238,9 +225,9 @@ func readFile(data ClientData) (string, error) {
 // Delete a file under the given account
 //
 // Delete will fial if the file does not exist
-func deleteFile(data ClientData) (string, error) {
-	account := data.header.Account
-	fileName := data.header.FileName
+func deleteFile(data common.ClientData) (string, error) {
+	account := data.Header.Account
+	fileName := data.Header.FileName
 	filePath := path.Join(accountRoot, account, fileName)
 
 	err := os.Remove(filePath)
@@ -255,8 +242,8 @@ func deleteFile(data ClientData) (string, error) {
 // List files under an account
 //
 // List will fail if the account is not present
-func listFiles(data ClientData) (string, error) {
-	account := data.header.Account
+func listFiles(data common.ClientData) (string, error) {
+	account := data.Header.Account
 	accountPath := path.Join(accountRoot, account)
 
 	files, err := ioutil.ReadDir(accountPath)
@@ -272,11 +259,11 @@ func listFiles(data ClientData) (string, error) {
 }
 
 // Send the response and close the connection
-func sendResponse(response ResponseData) {
-	messageLength := len(response.message)
+func sendResponse(response common.ResponseData) {
+	messageLength := len(response.Message)
 
 	for messageLength > 0 {
-		bytesSent, err := fmt.Fprintln(response.conn, response.message)
+		bytesSent, err := fmt.Fprintln(response.Conn, response.Message)
 		if err != nil {
 			log.Printf("Error: Unable to send message response\n")
 			break
@@ -284,7 +271,7 @@ func sendResponse(response ResponseData) {
 		messageLength -= bytesSent
 	}
 	// close the connection
-	if err := response.conn.Close(); err != nil {
+	if err := response.Conn.Close(); err != nil {
 		log.Printf("ERROR: unable to close connection: %v\n", err)
 	}
 }
@@ -300,8 +287,8 @@ func initServer(address string) (Server, error) {
 	}
 
 	s.handleChan = make(chan net.Conn)
-	s.ioChan = make(chan ClientData)
-	s.respChan = make(chan ResponseData)
+	s.ioChan = make(chan common.ClientData)
+	s.respChan = make(chan common.ResponseData)
 
 	log.Printf("Creating conn workers\n")
 	for i := 0; i < handleConnWorkers; i++ {
@@ -310,7 +297,7 @@ func initServer(address string) (Server, error) {
 				err := handleConnection(conn, s)
 				if err != nil {
 					log.Printf(err.Error())
-					svr.respChan <- ResponseData{err.Error(), conn}
+					svr.respChan <- common.ResponseData{err.Error(), conn}
 				}
 			}
 		}(s)
@@ -323,7 +310,7 @@ func initServer(address string) (Server, error) {
 				err := handleIO(data, s)
 				if err != nil {
 					log.Printf(err.Error())
-					svr.respChan <- ResponseData{err.Error(), data.conn}
+					svr.respChan <- common.ResponseData{err.Error(), data.Conn}
 				}
 			}
 		}(s)

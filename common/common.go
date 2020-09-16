@@ -5,13 +5,28 @@ package common
 
 import (
 	"fmt"
+	"net"
 )
 
+// Header information describing client data
 type Header struct {
 	Operation string
 	Account   string
 	FileName  string
 	Size      uint64
+}
+
+// ClientData Information read from the client
+type ClientData struct {
+	Header Header
+	Data   string
+	Conn   net.Conn
+}
+
+// ResponseData Information to return to the client
+type ResponseData struct {
+	Message string
+	Conn    net.Conn
 }
 
 // Check if the received operation is valid
