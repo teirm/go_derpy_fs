@@ -45,6 +45,51 @@ func connect(ip string, port string) (net.Conn, error) {
 	return net.Dial("tcp", address)
 }
 
+// performOperation
+func performOperation(config ClientConfig, client ClientState) error {
+
+	account := *config.account
+	fileName := *config.file
+	switch *config.op {
+	case "CREATE":
+		return doCreate(account, client)
+	case "READ":
+		return doRead(account, fileName, client)
+	case "WRITE":
+		return doWrite(account, fileName, client)
+	case "DELETE":
+		return doDelete(account, fileName, client)
+	case "LIST":
+		return doList(account, client)
+	}
+	return nil
+}
+
+// do a create operation for a new account
+func doCreate(account string, client ClientState) error {
+	return nil
+}
+
+// do a read operation
+func doRead(account string, fileName string, client ClientState) error {
+	return nil
+}
+
+// do a write operation
+func doWrite(account string, fileName string, client ClientState) error {
+	return nil
+}
+
+// do a delete operation
+func doDelete(account string, fileName string, client ClientState) error {
+	return nil
+}
+
+// do a list operation
+func doList(account string, client ClientState) error {
+	return nil
+}
+
 // handle a non-interactive session
 func nonInteractiveSession(config ClientConfig, client ClientState) error {
 	if *config.account == "" {
@@ -54,6 +99,7 @@ func nonInteractiveSession(config ClientConfig, client ClientState) error {
 	if err := common.CheckOperation(*config.op); err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -86,7 +132,7 @@ func main() {
 	var config ClientConfig
 	config.ip = flag.String("address", defaultAddress, "address to connect to")
 	config.port = flag.String("port", defaultPort, "port to connect to")
-	config.port = flag.String("account", "", "account to access")
+	config.account = flag.String("account", "", "account to access")
 	config.op = flag.String("op", "NOOP", "operation to perform")
 	config.file = flag.String("file-name", "", "file to read or write into")
 	config.interactive = flag.Bool("interactive", false, "start an interactice session")
