@@ -44,7 +44,7 @@ type Server struct {
 //
 // Header Format:
 //
-//   operation:filename:size
+//   operation:account:filename:size
 //
 //   operation	string
 //   account	string
