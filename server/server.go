@@ -25,7 +25,7 @@ const (
 	ioWorkers         int = 3
 	respWorkers       int = 3
 
-	headerFields int    = 3
+	headerFields int    = 4
 	headerDelim  string = ":"
 
 	accountRoot  string      = "/tmp"
@@ -60,7 +60,9 @@ func parseHeader(connReader *bufio.Reader) (common.Header, error) {
 	if err != nil {
 		return common.Header{}, err
 	}
-	fields := strings.Split(header, ":")
+	log.Printf("buffer: %s\n", header)
+	strippedHeader := strings.TrimSuffix(header, "\n")
+	fields := strings.Split(strippedHeader, ":")
 	if len(fields) != headerFields {
 		err := fmt.Errorf("invalid header: %s", header)
 		return common.Header{}, err

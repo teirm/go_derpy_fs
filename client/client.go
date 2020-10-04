@@ -37,9 +37,9 @@ type ClientState struct {
 
 // Create a header
 func serializeHeader(header common.Header) []byte {
-	sizeStr := strconv.FormatUint(header.Size, 64)
-	s := []string{header.Operation, header.Account, header.FileName, sizeStr}
-	return []byte(strings.Join(s, ":"))
+	sizeStr := strconv.FormatUint(header.Size, 10)
+	s := strings.Join([]string{header.Operation, header.Account, header.FileName, sizeStr}, ":")
+	return []byte(s + "\n")
 }
 
 // create conection to server
@@ -129,24 +129,24 @@ func readResponse(conn net.Conn) error {
 }
 
 // initialize and start client
-func startClient(config ClientConfig) error {
+func startClient(ip string, port string, interactive bool) (ClientState, error) {
 	var client ClientState
 	var err error
 
 	// TODO: connecting so early might be problematic
 	// if disk is slow. Maybe connect closer to when
 	// doing network IO
-	client.conn, err = connect(*config.ip, *config.port)
+	client.conn, err = connect(ip, port)
 	if err != nil {
 		log.Printf("unable to connect to server: %v\n", err)
-		return err
+		return ClientState{}, err
 	}
 
 	// default to non-interactive worker count
 	netWorkers := 1
 	diskWorkers := 1
 	respWorkers := 1
-	if *config.interactive == true {
+	if interactive == true {
 		netWorkers = 3
 		diskWorkers = 3
 		respWorkers = 3
@@ -189,7 +189,7 @@ func startClient(config ClientConfig) error {
 		}(client)
 	}
 
-	return nil
+	return client, nil
 }
 
 func main() {
@@ -203,7 +203,12 @@ func main() {
 
 	flag.Parse()
 
-	err := startClient(config)
+	cli, err := startClient(*config.ip, *config.port, *config.interactive)
+	if err != nil {
+		os.Exit(1)
+	}
+
+	err = performOperation(config, cli)
 	if err != nil {
 		os.Exit(1)
 	} else {
