@@ -3,6 +3,7 @@ package main
 
 import (
 	"bufio"
+	"container/list"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -13,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/teirm/go_derpy_fs/common"
+	"github.com/teirm/go_ftp/common"
 )
 
 const (
@@ -52,7 +53,12 @@ type Server struct {
 //   size		uint64
 //
 // Note: Size does not include the size of the header
-func parseHeader(header string) (common.Header, error) {
+func parseHeader(connReader *bufio.Reader) (common.Header, error) {
+
+	header, err := connReader.ReadString('\n')
+	if err != nil {
+		return common.Header{}, err
+	}
 	fields := strings.Split(header, ":")
 	if len(fields) != headerFields {
 		err := fmt.Errorf("invalid header: %s", header)
@@ -79,40 +85,34 @@ func parseHeader(header string) (common.Header, error) {
 // pass client data to io worker
 // on error pass error to response worker
 func handleConnection(connection net.Conn, svr Server) error {
-
-	input := bufio.NewScanner(connection)
-	// parse the header for the opertion type first
-	input.Scan()
-	if err := input.Err(); err != nil {
-		return fmt.Errorf("failed to read header: %v", err)
-	}
-
-	var clientData common.ClientData
-	header, err := parseHeader(input.Text())
+	connReader := bufio.NewReader(connection)
+	header, err := parseHeader(connReader)
 	if err != nil {
 		return fmt.Errorf("failed to parse header: %v", err)
 	}
 
-	clientData.Header = header
-	clientData.Conn = connection
+	var message common.ClientData
+	message.Header = header
+	message.Conn = connection
+	message.DataList = list.New()
 
-	for input.Scan() {
-		if err := input.Err(); err != nil {
+	var bytesToRead = message.Header.Size
+	for bytesToRead != 0 {
+		buffer := make([]byte, 1024)
+		bytesRead, err := connReader.Read(buffer)
+		if err != nil {
 			break
 		}
-		// this is horribly inefficient / dangerous right
-		// now but it is easy.
-		if input.Text() == "<END>" {
-			break
-		}
-		clientData.Data = input.Text()
+		message.DataList.PushBack(common.Data{bytesRead, buffer})
+		bytesToRead -= uint64(bytesRead)
+
 	}
 
 	if err != nil {
 		return fmt.Errorf("error processing input: %v", err)
 	}
 
-	svr.ioChan <- clientData
+	svr.ioChan <- message
 	return nil
 }
 
@@ -196,9 +196,18 @@ func writeFile(data common.ClientData) (string, error) {
 	fileName := data.Header.FileName
 	filePath := path.Join(accountRoot, account, fileName)
 
-	err := ioutil.WriteFile(filePath, []byte(data.Data), defaultPerms)
+	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, defaultPerms)
 	if err != nil {
 		return "", err
+	}
+
+	for iter := data.DataList.Front(); iter != nil; iter = iter.Next() {
+		// TODO: ick on so many levels -- maybe write own linked list
+		fileData := iter.Value.(*common.Data)
+		if _, err := file.Write(fileData.Buffer); err != nil {
+			file.Close()
+			return "", err
+		}
 	}
 
 	resp := fmt.Sprintf("wrote file: %s\n", fileName)
