@@ -6,6 +6,7 @@ import (
 	"container/list"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net"
@@ -98,9 +99,10 @@ func handleConnection(connection net.Conn, svr Server) error {
 
 	var bytesToRead = message.Header.Size
 	for bytesToRead != 0 {
+		// TODO: magic number
 		buffer := make([]byte, 1024)
 		bytesRead, err := connReader.Read(buffer)
-		if err != nil {
+		if err != nil && err != io.EOF {
 			break
 		}
 		message.DataList.PushBack(common.Data{bytesRead, buffer})
@@ -202,7 +204,7 @@ func writeFile(data common.ClientData) (string, error) {
 	}
 
 	for iter := data.DataList.Front(); iter != nil; iter = iter.Next() {
-		// TODO: ick on so many levels -- maybe write own linked list
+		// TODO: icky -- maybe write own linked list
 		fileData := iter.Value.(*common.Data)
 		if _, err := file.Write(fileData.Buffer); err != nil {
 			file.Close()
@@ -233,7 +235,7 @@ func readFile(data common.ClientData) (string, error) {
 
 // Delete a file under the given account
 //
-// Delete will fial if the file does not exist
+// Delete will fail if the file does not exist
 func deleteFile(data common.ClientData) (string, error) {
 	account := data.Header.Account
 	fileName := data.Header.FileName

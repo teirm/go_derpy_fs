@@ -2,6 +2,7 @@
 package main
 
 import (
+	"container/list"
 	"flag"
 	"fmt"
 	"log"
@@ -35,10 +36,10 @@ type ClientState struct {
 }
 
 // Create a header
-func serializeHeader(header common.Header) string {
+func serializeHeader(header common.Header) []byte {
 	sizeStr := strconv.FormatUint(header.Size, 64)
 	s := []string{header.Operation, header.Account, header.FileName, sizeStr}
-	return strings.Join(s, ":")
+	return []byte(strings.Join(s, ":"))
 }
 
 // create conection to server
@@ -70,31 +71,31 @@ func performOperation(config ClientConfig, client ClientState) error {
 // do a create operation for a new account
 func doCreate(account string, client ClientState) {
 	header := common.Header{"CREATE", account, "", 0}
-	client.send <- common.ClientData{header, "", client.conn}
+	client.send <- common.ClientData{header, nil, client.conn}
 }
 
 // do a read operation
 func doRead(account string, fileName string, client ClientState) {
 	header := common.Header{"READ", account, fileName, 0}
-	client.send <- common.ClientData{header, "", client.conn}
+	client.send <- common.ClientData{header, nil, client.conn}
 }
 
 // do a write operation
 func doWrite(account string, fileName string, client ClientState) {
 	header := common.Header{"WRITE", account, fileName, 0}
-	client.disk <- common.ClientData{header, "", client.conn}
+	client.disk <- common.ClientData{header, nil, client.conn}
 }
 
 // do a delete operation
 func doDelete(account string, fileName string, client ClientState) {
 	header := common.Header{"DELETE", account, fileName, 0}
-	client.send <- common.ClientData{header, "", client.conn}
+	client.send <- common.ClientData{header, nil, client.conn}
 }
 
 // do a list operation
 func doList(account string, client ClientState) {
 	header := common.Header{"LIST", account, "", 0}
-	client.send <- common.ClientData{header, "", client.conn}
+	client.send <- common.ClientData{header, nil, client.conn}
 }
 
 // Basic sanity checking on configuration
@@ -112,7 +113,8 @@ func validateConfig(config ClientConfig) error {
 
 // Send a message to the file server
 func sendMessage(data common.ClientData) error {
-	return nil
+	serializedHeader := serializeHeader(data.Header)
+	return common.SendMessage(serializedHeader, data.DataList, data.Conn)
 }
 
 // Perform disk IO
@@ -121,8 +123,9 @@ func doDiskIO(data *common.ClientData) error {
 }
 
 // Read responses from the server
-func readResponse(response net.Conn) error {
-	return nil
+func readResponse(conn net.Conn) error {
+	dataList := list.New()
+	return common.ReadMessage(dataList, conn)
 }
 
 // initialize and start client
