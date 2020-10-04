@@ -35,7 +35,7 @@ type ClientState struct {
 	read chan net.Conn
 }
 
-// Create a header
+// Serialize a header into a byte sequence
 func serializeHeader(header common.Header) []byte {
 	sizeStr := strconv.FormatUint(header.Size, 10)
 	s := strings.Join([]string{header.Operation, header.Account, header.FileName, sizeStr}, ":")
