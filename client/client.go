@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/teirm/go_derpy_fs/common"
+	"github.com/teirm/go_ftp/common"
 )
 
 const (
@@ -28,10 +28,10 @@ type ClientConfig struct {
 }
 
 type ClientState struct {
-	conn     net.Conn
-	diskIo   chan common.ClientData
-	netWrite chan common.ClientData
-	netRead  chan common.ResponseData
+	conn net.Conn
+	disk chan common.ClientData
+	send chan common.ClientData
+	read chan net.Conn
 }
 
 // Create a header
@@ -70,31 +70,31 @@ func performOperation(config ClientConfig, client ClientState) error {
 // do a create operation for a new account
 func doCreate(account string, client ClientState) {
 	header := common.Header{"CREATE", account, "", 0}
-	client.netWrite <- common.ClientData{header, "", client.conn}
+	client.send <- common.ClientData{header, "", client.conn}
 }
 
 // do a read operation
 func doRead(account string, fileName string, client ClientState) {
 	header := common.Header{"READ", account, fileName, 0}
-	client.netWrite <- common.ClientData{header, "", client.conn}
+	client.send <- common.ClientData{header, "", client.conn}
 }
 
 // do a write operation
 func doWrite(account string, fileName string, client ClientState) {
 	header := common.Header{"WRITE", account, fileName, 0}
-	client.diskIo <- common.ClientData{header, "", client.conn}
+	client.disk <- common.ClientData{header, "", client.conn}
 }
 
 // do a delete operation
 func doDelete(account string, fileName string, client ClientState) {
 	header := common.Header{"DELETE", account, fileName, 0}
-	client.netWrite <- common.ClientData{header, "", client.conn}
+	client.send <- common.ClientData{header, "", client.conn}
 }
 
 // do a list operation
 func doList(account string, client ClientState) {
 	header := common.Header{"LIST", account, "", 0}
-	client.netWrite <- common.ClientData{header, "", client.conn}
+	client.send <- common.ClientData{header, "", client.conn}
 }
 
 // Basic sanity checking on configuration
@@ -107,6 +107,21 @@ func validateConfig(config ClientConfig) error {
 		return err
 	}
 
+	return nil
+}
+
+// Send a message to the file server
+func sendMessage(data common.ClientData) error {
+	return nil
+}
+
+// Perform disk IO
+func doDiskIO(data *common.ClientData) error {
+	return nil
+}
+
+// Read responses from the server
+func readResponse(response net.Conn) error {
 	return nil
 }
 
@@ -134,30 +149,39 @@ func startClient(config ClientConfig) error {
 		respWorkers = 3
 	}
 
-	client.diskIo = make(chan common.ClientData)
-	client.netWrite = make(chan common.ClientData)
-	client.netRead = make(chan common.ResponseData)
+	client.disk = make(chan common.ClientData)
+	client.send = make(chan common.ClientData)
+	client.read = make(chan net.Conn)
 
 	for i := 0; i < netWorkers; i++ {
 		go func(cli ClientState) {
-			for data := range cli.netWrite {
-				// TODO: write client message
+			for data := range cli.send {
+				err := sendMessage(data)
+				if err != nil {
+					log.Printf("unable to send message: %v\n", err)
+				}
 			}
 		}(client)
 	}
 
 	for i := 0; i < diskWorkers; i++ {
 		go func(cli ClientState) {
-			for data := range cli.diskIo {
-				// TODO: do disk IO
+			for data := range cli.disk {
+				err := doDiskIO(&data)
+				if err != nil {
+					log.Printf("unable to perform disk io: %v\n", err)
+				}
 			}
 		}(client)
 	}
 
 	for i := 0; i < respWorkers; i++ {
 		go func(cli ClientState) {
-			for data := range cli.netRead {
-				// TODO: read server responses
+			for data := range cli.read {
+				err := readResponse(data)
+				if err != nil {
+					log.Printf("unable to read reasponse: %v\n", err)
+				}
 			}
 		}(client)
 	}
