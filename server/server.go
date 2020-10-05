@@ -6,14 +6,11 @@ import (
 	"container/list"
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"net"
 	"os"
 	"path"
-	"strconv"
-	"strings"
 
 	"github.com/teirm/go_ftp/common"
 )
@@ -25,8 +22,7 @@ const (
 	ioWorkers         int = 3
 	respWorkers       int = 3
 
-	headerFields int    = 4
-	headerDelim  string = ":"
+	headerDelim string = ":"
 
 	accountRoot  string      = "/tmp"
 	defaultPerms os.FileMode = 0644
@@ -41,55 +37,12 @@ type Server struct {
 	respChan   chan common.ResponseData
 }
 
-// Parse the header information read from the client
-// connection.
-//
-// Header Format:
-//
-//   operation:account:filename:size
-//
-//   operation	string
-//   account	string
-//	 fileName	string
-//   size		uint64
-//
-// Note: Size does not include the size of the header
-func parseHeader(connReader *bufio.Reader) (common.Header, error) {
-
-	header, err := connReader.ReadString('\n')
-	if err != nil {
-		return common.Header{}, err
-	}
-	log.Printf("buffer: %s\n", header)
-	strippedHeader := strings.TrimSuffix(header, "\n")
-	fields := strings.Split(strippedHeader, ":")
-	if len(fields) != headerFields {
-		err := fmt.Errorf("invalid header: %s", header)
-		return common.Header{}, err
-	}
-
-	operation := fields[0]
-	identity := fields[1]
-	fileName := fields[2]
-	size, err := strconv.ParseUint(fields[3], 10, 64)
-	if err != nil {
-		return common.Header{}, err
-	}
-
-	err = common.CheckOperation(operation)
-	if err != nil {
-		return common.Header{}, err
-	}
-
-	return common.Header{operation, identity, fileName, size}, nil
-}
-
 // handle a connection and read client data
 // pass client data to io worker
 // on error pass error to response worker
 func handleConnection(connection net.Conn, svr Server) error {
 	connReader := bufio.NewReader(connection)
-	header, err := parseHeader(connReader)
+	header, err := common.ReadHeader(connReader)
 	if err != nil {
 		return fmt.Errorf("failed to parse header: %v", err)
 	}
@@ -99,20 +52,8 @@ func handleConnection(connection net.Conn, svr Server) error {
 	message.Conn = connection
 	message.DataList = list.New()
 
-	var bytesToRead = message.Header.Size
-	for bytesToRead != 0 {
-		// TODO: magic number
-		buffer := make([]byte, 1024)
-		bytesRead, err := connReader.Read(buffer)
-		if err != nil && err != io.EOF {
-			break
-		}
-		message.DataList.PushBack(common.Data{bytesRead, buffer})
-		bytesToRead -= uint64(bytesRead)
-
-	}
-
-	if err != nil {
+	var readSize = message.Header.Size
+	if err := common.ReadMessage(message.DataList, readSize, connection); err != nil {
 		return fmt.Errorf("error processing input: %v", err)
 	}
 

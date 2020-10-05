@@ -8,8 +8,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"strconv"
-	"strings"
 
 	"github.com/teirm/go_ftp/common"
 )
@@ -33,13 +31,6 @@ type ClientState struct {
 	disk chan common.ClientData
 	send chan common.ClientData
 	read chan net.Conn
-}
-
-// Serialize a header into a byte sequence
-func serializeHeader(header common.Header) []byte {
-	sizeStr := strconv.FormatUint(header.Size, 10)
-	s := strings.Join([]string{header.Operation, header.Account, header.FileName, sizeStr}, ":")
-	return []byte(s + "\n")
 }
 
 // create conection to server
@@ -72,6 +63,7 @@ func performOperation(config ClientConfig, client ClientState) error {
 func doCreate(account string, client ClientState) {
 	header := common.Header{"CREATE", account, "", 0}
 	client.send <- common.ClientData{header, nil, client.conn}
+	client.read <- client.conn
 }
 
 // do a read operation
@@ -113,7 +105,7 @@ func validateConfig(config ClientConfig) error {
 
 // Send a message to the file server
 func sendMessage(data common.ClientData) error {
-	serializedHeader := serializeHeader(data.Header)
+	serializedHeader := common.SerializeHeader(data.Header)
 	return common.SendMessage(serializedHeader, data.DataList, data.Conn)
 }
 
@@ -124,8 +116,7 @@ func doDiskIO(data *common.ClientData) error {
 
 // Read responses from the server
 func readResponse(conn net.Conn) error {
-	dataList := list.New()
-	return common.ReadMessage(dataList, conn)
+	return nil
 }
 
 // initialize and start client

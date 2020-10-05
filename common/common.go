@@ -4,12 +4,15 @@
 package common
 
 import (
+	"bufio"
 	"container/list"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net"
+	"strconv"
+	"strings"
 )
 
 // Header information describing client data
@@ -46,6 +49,10 @@ type ResponseData struct {
 	Conn    net.Conn
 }
 
+const (
+	headerFields int = 4
+)
+
 var isDebug bool
 
 func AddCommonFlags() {
@@ -56,6 +63,55 @@ func DebugLog(format string, v ...interface{}) {
 	if isDebug == true {
 		log.Printf(format, v)
 	}
+}
+
+// Serialize a header into a byte sequence
+func SerializeHeader(header Header) []byte {
+	sizeStr := strconv.FormatUint(header.Size, 10)
+	s := strings.Join([]string{header.Operation, header.Account, header.FileName, sizeStr}, ":")
+	return []byte(s + "\n")
+}
+
+// Parse the header information beginning every message
+// connection.
+//
+// Header Format:
+//
+//   operation:account:filename:size
+//
+//   operation	string
+//   account	string
+//	 fileName	string
+//   size		uint64
+//
+// Note: Size does not include the size of the header
+func ReadHeader(reader *bufio.Reader) (Header, error) {
+	header, err := reader.ReadString('\n')
+	if err != nil {
+		return Header{}, err
+	}
+	log.Printf("buffer: %s\n", header)
+	strippedHeader := strings.TrimSuffix(header, "\n")
+	fields := strings.Split(strippedHeader, ":")
+	if len(fields) != headerFields {
+		err := fmt.Errorf("invalid header: %s", header)
+		return Header{}, err
+	}
+
+	operation := fields[0]
+	identity := fields[1]
+	fileName := fields[2]
+	size, err := strconv.ParseUint(fields[3], 10, 64)
+	if err != nil {
+		return Header{}, err
+	}
+
+	err = CheckOperation(operation)
+	if err != nil {
+		return Header{}, err
+	}
+
+	return Header{operation, identity, fileName, size}, nil
 }
 
 // Check if the received operation is valid
@@ -97,16 +153,17 @@ func connRead(reader io.Reader) (Data, error) {
 }
 
 // Common function for reading a message to a connection
-func ReadMessage(dataList *list.List, conn net.Conn) error {
+func ReadMessage(dataList *list.List, bytesToRead uint64, conn net.Conn) error {
 	var err error
 	var data Data
 
-	for err != io.EOF {
+	for bytesToRead != 0 {
 		data, err = connRead(conn)
 		if err != nil && err != io.EOF {
 			break
 		}
 		dataList.PushBack(data)
+		bytesToRead -= uint64(data.Size)
 	}
 	return nil
 }
