@@ -5,8 +5,10 @@ package common
 
 import (
 	"container/list"
+	"flag"
 	"fmt"
 	"io"
+	"log"
 	"net"
 )
 
@@ -42,6 +44,18 @@ type ResponseData struct {
 	// or a buffer
 	Message string
 	Conn    net.Conn
+}
+
+var isDebug bool
+
+func AddCommonFlags() {
+	flag.BoolVar(&isDebug, "debug", false, "turn on debug messages")
+}
+
+func DebugLog(format string, v ...interface{}) {
+	if isDebug == true {
+		log.Printf(format, v)
+	}
 }
 
 // Check if the received operation is valid

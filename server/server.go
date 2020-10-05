@@ -343,6 +343,7 @@ func initServer(address string) (Server, error) {
 
 func main() {
 	port := flag.String("port", defaultPort, "port to listen for connections")
+	common.AddCommonFlags()
 	flag.Parse()
 
 	log.Printf("port: %s\n", *port)

@@ -20,12 +20,12 @@ const (
 )
 
 type ClientConfig struct {
-	ip          *string
-	port        *string
-	account     *string
-	op          *string
-	file        *string
-	interactive *bool
+	ip          string
+	port        string
+	account     string
+	op          string
+	file        string
+	interactive bool
 }
 
 type ClientState struct {
@@ -51,9 +51,9 @@ func connect(ip string, port string) (net.Conn, error) {
 // performOperation
 func performOperation(config ClientConfig, client ClientState) error {
 
-	account := *config.account
-	fileName := *config.file
-	switch *config.op {
+	account := config.account
+	fileName := config.file
+	switch config.op {
 	case "CREATE":
 		doCreate(account, client)
 	case "READ":
@@ -100,11 +100,11 @@ func doList(account string, client ClientState) {
 
 // Basic sanity checking on configuration
 func validateConfig(config ClientConfig) error {
-	if *config.account == "" {
-		return fmt.Errorf("invalid account name: %s", *config.account)
+	if config.account == "" {
+		return fmt.Errorf("invalid account name: %s", config.account)
 	}
 
-	if err := common.CheckOperation(*config.op); err != nil {
+	if err := common.CheckOperation(config.op); err != nil {
 		return err
 	}
 
@@ -194,16 +194,17 @@ func startClient(ip string, port string, interactive bool) (ClientState, error) 
 
 func main() {
 	var config ClientConfig
-	config.ip = flag.String("address", defaultAddress, "address to connect to")
-	config.port = flag.String("port", defaultPort, "port to connect to")
-	config.account = flag.String("account", "", "account to access")
-	config.op = flag.String("op", "NOOP", "operation to perform")
-	config.file = flag.String("file-name", "", "file to read or write into")
-	config.interactive = flag.Bool("interactive", false, "start an interactice session")
+	flag.StringVar(&config.ip, "address", defaultAddress, "address to connect to")
+	flag.StringVar(&config.port, "port", defaultPort, "port to connect to")
+	flag.StringVar(&config.account, "account", "", "account to access")
+	flag.StringVar(&config.op, "op", "NOOP", "operation to perform")
+	flag.StringVar(&config.file, "file-name", "", "file to read or write into")
+	flag.BoolVar(&config.interactive, "interactive", false, "start an interactice session")
+	common.AddCommonFlags()
 
 	flag.Parse()
 
-	cli, err := startClient(*config.ip, *config.port, *config.interactive)
+	cli, err := startClient(config.ip, config.port, config.interactive)
 	if err != nil {
 		os.Exit(1)
 	}
