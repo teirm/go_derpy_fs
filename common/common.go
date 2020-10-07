@@ -37,14 +37,15 @@ type ClientData struct {
 
 // ResponseData Information to return to the client
 type ResponseData struct {
-	// TODO: can this also be a list? will it write to the socket?
+	// TODO(teirm): can this also be a list? will it write to the socket?
 	// Gut says no since it would just be a pointer.
 	// What can be done is it can be a list and then the
 	// Write method writes out each buffer -- client needs
 	// to then assemble the message.
 	// Simplest thing to do would be to have 1 / n connections
 	// for client -- if they exceed that can be a rejection
-	// or a buffer
+	// or a buffer?
+	// Might be able to send header and DataList is necessary
 	Message string
 	Conn    net.Conn
 }
@@ -90,7 +91,7 @@ func ReadHeader(reader *bufio.Reader) (Header, error) {
 	if err != nil {
 		return Header{}, err
 	}
-	log.Printf("buffer: %s\n", header)
+	DebugLog("header: %s\n", header)
 	strippedHeader := strings.TrimSuffix(header, "\n")
 	fields := strings.Split(strippedHeader, ":")
 	if len(fields) != headerFields {
@@ -152,7 +153,7 @@ func connRead(reader io.Reader) (Data, error) {
 	return Data{bytesRead, buffer}, err
 }
 
-// Common function for reading a message to a connection
+// Common function for reading a message from a connection
 func ReadMessage(dataList *list.List, bytesToRead uint64, conn net.Conn) error {
 	var err error
 	var data Data
