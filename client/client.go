@@ -112,12 +112,23 @@ func sendMessage(data common.ClientData) error {
 
 // Perform disk IO
 func doDiskRead(data *common.ClientData) error {
+	flags := os.O_RDONLY
+	perms := os.FileMode(0644)
+	size, err := common.ReadFile(data.Header.FileName, flags, perms, data.DataList)
+	if err != nil {
+		return err
+	}
+	data.Header.Size = size
 	return nil
 }
 
 // Perform disk IO
 func doDiskWrite(data *common.ResponseData) error {
-	return nil
+	flags := os.O_APPEND | os.O_WRONLY | os.O_CREATE
+	perms := os.FileMode(0644)
+	fileName := data.Header.FileName
+	err := common.WriteFile(fileName, flags, perms, data.DataList)
+	return err
 }
 
 // Read responses from the server
@@ -199,6 +210,7 @@ func startClient(ip string, port string, interactive bool) (ClientState, error) 
 				if err != nil {
 					log.Printf("unable to perform disk io: %v\n", err)
 				}
+				cli.send <- data
 			}
 		}(client)
 	}

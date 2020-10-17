@@ -60,8 +60,8 @@ func handleConnection(connection net.Conn, svr Server) error {
 }
 
 // create a ResponseData
-func createResponseData(result string, size uint64, dataList *list.List, conn net.Conn) common.ResponseData {
-	header := common.ResponseHeader{result, size}
+func createResponseData(op string, result string, fileName string, size uint64, dataList *list.List, conn net.Conn) common.ResponseData {
+	header := common.ResponseHeader{op, result, fileName, size}
 	return common.ResponseData{header, dataList, conn}
 }
 
@@ -133,7 +133,7 @@ func createAccount(data common.ClientData) (common.ResponseData, error) {
 	}
 
 	resp := fmt.Sprintf("account created: %s", account)
-	return createResponseData(resp, 0, nil, data.Conn), nil
+	return createResponseData("CREATE", resp, "", 0, nil, data.Conn), nil
 }
 
 // Write a file under the given account
@@ -150,7 +150,7 @@ func writeFile(data common.ClientData) (common.ResponseData, error) {
 	}
 
 	resp := fmt.Sprintf("wrote file: %s\n", fileName)
-	return createResponseData(resp, 0, nil, data.Conn), nil
+	return createResponseData("WRITE", resp, "", 0, nil, data.Conn), nil
 }
 
 // Read a file under the given account
@@ -168,7 +168,7 @@ func readFile(data common.ClientData) (common.ResponseData, error) {
 	}
 
 	resp := fmt.Sprintf("read file: %s\n", fileName)
-	return createResponseData(resp, size, dataList, data.Conn), nil
+	return createResponseData("READ", resp, fileName, size, dataList, data.Conn), nil
 }
 
 // Delete a file under the given account
@@ -185,7 +185,7 @@ func deleteFile(data common.ClientData) (common.ResponseData, error) {
 	}
 
 	resp := fmt.Sprintf("deleted %s", fileName)
-	return createResponseData(resp, 0, nil, data.Conn), nil
+	return createResponseData("DELETE", resp, "", 0, nil, data.Conn), nil
 }
 
 // List files under an account
@@ -204,7 +204,7 @@ func listFiles(data common.ClientData) (common.ResponseData, error) {
 	for _, file := range files {
 		resp = resp + file.Name() + "\n"
 	}
-	return createResponseData(resp, 0, nil, data.Conn), nil
+	return createResponseData("LIST", resp, "", 0, nil, data.Conn), nil
 }
 
 // Send the response and close the connection
@@ -240,7 +240,7 @@ func initServer(address string) (Server, error) {
 				err := handleConnection(conn, s)
 				if err != nil {
 					log.Printf(err.Error())
-					svr.respChan <- createResponseData(err.Error(), 0, nil, conn)
+					svr.respChan <- createResponseData("ERROR", err.Error(), "", 0, nil, conn)
 				}
 			}
 		}(s)
@@ -253,7 +253,7 @@ func initServer(address string) (Server, error) {
 				err := handleIO(data, s)
 				if err != nil {
 					log.Printf(err.Error())
-					svr.respChan <- createResponseData(err.Error(), 0, nil, data.Conn)
+					svr.respChan <- createResponseData("ERROR", err.Error(), "", 0, nil, data.Conn)
 				}
 			}
 		}(s)
