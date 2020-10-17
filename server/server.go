@@ -2,7 +2,6 @@
 package main
 
 import (
-	"bufio"
 	"container/list"
 	"flag"
 	"fmt"
@@ -41,8 +40,7 @@ type Server struct {
 // pass client data to io worker
 // on error pass error to response worker
 func handleConnection(connection net.Conn, svr Server) error {
-	connReader := bufio.NewReader(connection)
-	header, err := common.ReadHeader(connReader)
+	header, err := common.ReadHeader(connection)
 	if err != nil {
 		return fmt.Errorf("failed to parse header: %v", err)
 	}
@@ -52,7 +50,7 @@ func handleConnection(connection net.Conn, svr Server) error {
 	message.Conn = connection
 	message.DataList = list.New()
 
-	var readSize = message.Header.Size
+	readSize := message.Header.Size
 	if err := common.ReadMessage(message.DataList, readSize, connection); err != nil {
 		return fmt.Errorf("error processing input: %v", err)
 	}

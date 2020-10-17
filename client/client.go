@@ -18,8 +18,7 @@ const (
 )
 
 type ClientConfig struct {
-	ip          string
-	port        string
+	ip          string port        string
 	account     string
 	op          string
 	file        string
@@ -116,6 +115,20 @@ func doDiskIO(data *common.ClientData) error {
 
 // Read responses from the server
 func readResponse(conn net.Conn) error {
+	responseHeader, err := common.ReadResponseHeader(conn)
+	if err != nil {
+		return err
+	}
+	var response common.ResponseData
+	response.Header = responseHeader
+	response.Conn = conn
+	response.DataList = list.New()
+
+	readSize := responseHeader.Size
+	if err := common.ReadMessage(response.DataList, readSize, conn); err != nil {
+		return fmt.Errorf("error reading response: %v", err)
+	}
+
 	return nil
 }
 
