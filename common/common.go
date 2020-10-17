@@ -11,6 +11,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -21,6 +22,11 @@ type Header struct {
 	Account   string
 	FileName  string
 	Size      uint64
+}
+
+type ResponseHeader struct {
+	Result string
+	Size   uint64
 }
 
 type Data struct {
@@ -37,17 +43,9 @@ type ClientData struct {
 
 // ResponseData Information to return to the client
 type ResponseData struct {
-	// TODO(teirm): can this also be a list? will it write to the socket?
-	// Gut says no since it would just be a pointer.
-	// What can be done is it can be a list and then the
-	// Write method writes out each buffer -- client needs
-	// to then assemble the message.
-	// Simplest thing to do would be to have 1 / n connections
-	// for client -- if they exceed that can be a rejection
-	// or a buffer?
-	// Might be able to send header and DataList is necessary
-	Message string
-	Conn    net.Conn
+	Header   ResponseHeader
+	DataList *list.List
+	Conn     net.Conn
 }
 
 const (
@@ -73,6 +71,12 @@ func SerializeHeader(header Header) []byte {
 	return []byte(s + "\n")
 }
 
+func SerializeResponseHeader(header ResponseHeader) []byte {
+	sizeStr := strconv.FormatUint(header.Size, 10)
+	s := strings.Join([]string{header.Result, sizeStr}, ":")
+	return []byte(s + "\n")
+}
+
 // Parse the header information beginning every message
 // connection.
 //
@@ -82,6 +86,7 @@ func SerializeHeader(header Header) []byte {
 //
 //   operation	string
 //   account	string
+//	 result		string
 //	 fileName	string
 //   size		uint64
 //
@@ -133,7 +138,7 @@ func CheckOperation(operation string) error {
 	}
 }
 
-func connWrite(buffer []byte, size int, writer io.Writer) error {
+func genWrite(buffer []byte, size int, writer io.Writer) error {
 	for size != 0 {
 		bytesWritten, err := writer.Write(buffer)
 		if err != nil {
@@ -144,7 +149,7 @@ func connWrite(buffer []byte, size int, writer io.Writer) error {
 	return nil
 }
 
-func connRead(reader io.Reader) (Data, error) {
+func genRead(reader io.Reader) (Data, error) {
 	buffer := make([]byte, 1024)
 	bytesRead, err := reader.Read(buffer)
 	if err != nil && err != io.EOF {
@@ -153,32 +158,74 @@ func connRead(reader io.Reader) (Data, error) {
 	return Data{bytesRead, buffer}, err
 }
 
+// Common function for Reading a file into a Data list
+func ReadFile(name string, flags int, perm os.FileMode, dataList *list.List) (uint64, error) {
+	stat, err := os.Stat(name)
+	if err != nil {
+		return 0, err
+	}
+
+	file, err := os.OpenFile(name, flags, perm)
+	if err != nil {
+		return 0, err
+	}
+
+	bytesToRead := stat.Size()
+	for bytesToRead != 0 {
+		data, err := genRead(file)
+		if err != nil && err != io.EOF {
+			break
+		}
+		dataList.PushBack(data)
+		bytesToRead -= int64(data.Size)
+	}
+
+	return uint64(stat.Size()), err
+}
+
+// Common function for writing a file from a Data list
+func WriteFile(name string, flags int, perm os.FileMode, dataList *list.List) error {
+	file, err := os.OpenFile(name, flags, perm)
+	if err != nil {
+		return err
+	}
+	for iter := dataList.Front(); iter != nil; iter = iter.Next() {
+		// TODO: icky -- maybe write own linked list
+		fileData := iter.Value.(*Data)
+		if err := genWrite(fileData.Buffer, fileData.Size, file); err != nil {
+			file.Close()
+			break
+		}
+	}
+	return err
+}
+
 // Common function for reading a message from a connection
 func ReadMessage(dataList *list.List, bytesToRead uint64, conn net.Conn) error {
 	var err error
 	var data Data
 
 	for bytesToRead != 0 {
-		data, err = connRead(conn)
+		data, err = genRead(conn)
 		if err != nil && err != io.EOF {
 			break
 		}
 		dataList.PushBack(data)
 		bytesToRead -= uint64(data.Size)
 	}
-	return nil
+	return err
 }
 
 // Common function for writing a message to a connection
 func SendMessage(header []byte, dataList *list.List, conn net.Conn) error {
-	if err := connWrite(header, len(header), conn); err != nil {
+	if err := genWrite(header, len(header), conn); err != nil {
 		return err
 	}
 
 	if dataList != nil {
 		for iter := dataList.Front(); iter != nil; iter = iter.Next() {
 			data := iter.Value.(*Data)
-			if err := connWrite(data.Buffer, data.Size, conn); err != nil {
+			if err := genWrite(data.Buffer, data.Size, conn); err != nil {
 				return err
 			}
 		}

@@ -61,13 +61,20 @@ func handleConnection(connection net.Conn, svr Server) error {
 	return nil
 }
 
+// create a ResponseData
+func createResponseData(result string, size uint64, dataList *list.List, conn net.Conn) common.ResponseData {
+	header := common.ResponseHeader{result, size}
+	return common.ResponseData{header, dataList, conn}
+}
+
 // Perform the requested server side IO operation
 // and produce an error or response for the client
 func handleIO(data common.ClientData, svr Server) error {
 
-	op := data.Header.Operation
+	header := data.Header
+	op := header.Operation
 
-	var res string
+	var res common.ResponseData
 	var err error
 	switch op {
 	case "CREATE":
@@ -81,15 +88,13 @@ func handleIO(data common.ClientData, svr Server) error {
 	case "LIST":
 		res, err = listFiles(data)
 	default:
-		// probably should be a panic -- this would be a programmer
-		// error
 		return fmt.Errorf("Invalid operation: %s", op)
 	}
 	if err != nil {
 		return err
 	}
 
-	svr.respChan <- common.ResponseData{res, data.Conn}
+	svr.respChan <- res
 	return nil
 }
 
@@ -112,117 +117,103 @@ func checkExistence(path string) (bool, error) {
 //
 // By definition, an account will just be a
 // new directory
-func createAccount(data common.ClientData) (string, error) {
+func createAccount(data common.ClientData) (common.ResponseData, error) {
 	account := data.Header.Account
 	accountPath := path.Join(accountRoot, account)
 	exists, err := checkExistence(accountPath)
 	if err != nil {
-		return "", err
+		return common.ResponseData{}, err
 	}
 	if exists == true {
 		err := fmt.Errorf("%s already exists", account)
-		return "", err
+		return common.ResponseData{}, err
 	}
 
 	err = os.Mkdir(accountPath, defaultPerms)
 	if err != nil {
-		return "", err
+		return common.ResponseData{}, err
 	}
 
 	resp := fmt.Sprintf("account created: %s", account)
-	return resp, nil
+	return createResponseData(resp, 0, nil, data.Conn), nil
 }
 
 // Write a file under the given account
 //
 // Write will fail if the file exists already
-func writeFile(data common.ClientData) (string, error) {
+func writeFile(data common.ClientData) (common.ResponseData, error) {
 	account := data.Header.Account
 	fileName := data.Header.FileName
 	filePath := path.Join(accountRoot, account, fileName)
 
-	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, defaultPerms)
-	if err != nil {
-		return "", err
-	}
-
-	for iter := data.DataList.Front(); iter != nil; iter = iter.Next() {
-		// TODO: icky -- maybe write own linked list
-		fileData := iter.Value.(*common.Data)
-		if _, err := file.Write(fileData.Buffer); err != nil {
-			file.Close()
-			return "", err
-		}
+	openFlags := os.O_APPEND | os.O_CREATE | os.O_WRONLY
+	if err := common.WriteFile(filePath, openFlags, defaultPerms, data.DataList); err != nil {
+		return common.ResponseData{}, err
 	}
 
 	resp := fmt.Sprintf("wrote file: %s\n", fileName)
-	return resp, nil
+	return createResponseData(resp, 0, nil, data.Conn), nil
 }
 
 // Read a file under the given account
 //
 // Read will fail if the file does not exist
-func readFile(data common.ClientData) (string, error) {
+func readFile(data common.ClientData) (common.ResponseData, error) {
 	account := data.Header.Account
 	fileName := data.Header.FileName
 	filePath := path.Join(accountRoot, account, fileName)
 
-	fileData, err := ioutil.ReadFile(filePath)
+	dataList := list.New()
+	size, err := common.ReadFile(filePath, os.O_RDONLY, defaultPerms, dataList)
 	if err != nil {
-		return "", err
+		return common.ResponseData{}, err
 	}
 
-	//TODO if the data is not a string -- this is wrong
-	return string(fileData), nil
+	resp := fmt.Sprintf("read file: %s\n", fileName)
+	return createResponseData(resp, size, dataList, data.Conn), nil
 }
 
 // Delete a file under the given account
 //
 // Delete will fail if the file does not exist
-func deleteFile(data common.ClientData) (string, error) {
+func deleteFile(data common.ClientData) (common.ResponseData, error) {
 	account := data.Header.Account
 	fileName := data.Header.FileName
 	filePath := path.Join(accountRoot, account, fileName)
 
 	err := os.Remove(filePath)
 	if err != nil {
-		return "", err
+		return common.ResponseData{}, err
 	}
 
 	resp := fmt.Sprintf("deleted %s", fileName)
-	return resp, nil
+	return createResponseData(resp, 0, nil, data.Conn), nil
 }
 
 // List files under an account
 //
 // List will fail if the account is not present
-func listFiles(data common.ClientData) (string, error) {
+func listFiles(data common.ClientData) (common.ResponseData, error) {
 	account := data.Header.Account
 	accountPath := path.Join(accountRoot, account)
 
 	files, err := ioutil.ReadDir(accountPath)
 	if err != nil {
-		return "", err
+		return common.ResponseData{}, err
 	}
 
 	var resp string
 	for _, file := range files {
 		resp = resp + file.Name() + "\n"
 	}
-	return resp, nil
+	return createResponseData(resp, 0, nil, data.Conn), nil
 }
 
 // Send the response and close the connection
 func sendResponse(response common.ResponseData) {
-	messageLength := len(response.Message)
-
-	for messageLength > 0 {
-		bytesSent, err := fmt.Fprintln(response.Conn, response.Message)
-		if err != nil {
-			log.Printf("Error: Unable to send message response\n")
-			break
-		}
-		messageLength -= bytesSent
+	serializedHeader := common.SerializeResponseHeader(response.Header)
+	if err := common.SendMessage(serializedHeader, response.DataList, response.Conn); err != nil {
+		log.Printf("ERROR: Failed to send message: %v\n", err)
 	}
 	// close the connection
 	if err := response.Conn.Close(); err != nil {
@@ -251,7 +242,7 @@ func initServer(address string) (Server, error) {
 				err := handleConnection(conn, s)
 				if err != nil {
 					log.Printf(err.Error())
-					svr.respChan <- common.ResponseData{err.Error(), conn}
+					svr.respChan <- createResponseData(err.Error(), 0, nil, conn)
 				}
 			}
 		}(s)
@@ -264,7 +255,7 @@ func initServer(address string) (Server, error) {
 				err := handleIO(data, s)
 				if err != nil {
 					log.Printf(err.Error())
-					svr.respChan <- common.ResponseData{err.Error(), data.Conn}
+					svr.respChan <- createResponseData(err.Error(), 0, nil, data.Conn)
 				}
 			}
 		}(s)
