@@ -25,8 +25,9 @@ type Header struct {
 }
 
 type ResponseHeader struct {
-	Result string
-	Size   uint64
+	Operation string
+	Result    string
+	Size      uint64
 }
 
 type Data struct {
@@ -50,7 +51,7 @@ type ResponseData struct {
 
 const (
 	headerFields         int = 4
-	responseHeaderFields int = 2
+	responseHeaderFields int = 3
 )
 
 var isDebug bool
@@ -74,7 +75,7 @@ func SerializeHeader(header Header) []byte {
 
 func SerializeResponseHeader(header ResponseHeader) []byte {
 	sizeStr := strconv.FormatUint(header.Size, 10)
-	s := strings.Join([]string{header.Result, sizeStr}, ":")
+	s := strings.Join([]string{header.Operation, header.Result, sizeStr}, ":")
 	return []byte(s + "\n")
 }
 
@@ -128,6 +129,7 @@ func ReadHeader(conn net.Conn) (Header, error) {
 // Response Header Format:
 //	 result:size
 //
+//   operation	string
 //	 result		string
 //   size		uint64
 //
@@ -145,12 +147,13 @@ func ReadResponseHeader(conn net.Conn) (ResponseHeader, error) {
 		return ResponseHeader{}, err
 	}
 
-	result := fields[0]
+	operation := fields[0]
+	result := fields[1]
 	size, err := strconv.ParseUint(fields[1], 10, 64)
 	if err != nil {
 		return ResponseHeader{}, err
 	}
-	return ResponseHeader{result, size}, nil
+	return ResponseHeader{operation, result, size}, nil
 }
 
 // Check if the received operation is valid

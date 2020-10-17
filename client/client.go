@@ -18,7 +18,8 @@ const (
 )
 
 type ClientConfig struct {
-	ip          string port        string
+	ip          string
+	port        string
 	account     string
 	op          string
 	file        string
@@ -26,10 +27,11 @@ type ClientConfig struct {
 }
 
 type ClientState struct {
-	conn net.Conn
-	disk chan common.ClientData
-	send chan common.ClientData
-	read chan net.Conn
+	conn      net.Conn
+	diskWrite chan common.ResponseData
+	diskRead  chan common.ClientData
+	send      chan common.ClientData
+	read      chan net.Conn
 }
 
 // create conection to server
@@ -74,7 +76,7 @@ func doRead(account string, fileName string, client ClientState) {
 // do a write operation
 func doWrite(account string, fileName string, client ClientState) {
 	header := common.Header{"WRITE", account, fileName, 0}
-	client.disk <- common.ClientData{header, nil, client.conn}
+	client.diskRead <- common.ClientData{header, nil, client.conn}
 }
 
 // do a delete operation
@@ -109,15 +111,20 @@ func sendMessage(data common.ClientData) error {
 }
 
 // Perform disk IO
-func doDiskIO(data *common.ClientData) error {
+func doDiskRead(data *common.ClientData) error {
+	return nil
+}
+
+// Perform disk IO
+func doDiskWrite(data *common.ResponseData) error {
 	return nil
 }
 
 // Read responses from the server
-func readResponse(conn net.Conn) error {
+func readResponse(conn net.Conn) (common.ResponseData, error) {
 	responseHeader, err := common.ReadResponseHeader(conn)
 	if err != nil {
-		return err
+		return common.ResponseData{}, err
 	}
 	var response common.ResponseData
 	response.Header = responseHeader
@@ -126,10 +133,21 @@ func readResponse(conn net.Conn) error {
 
 	readSize := responseHeader.Size
 	if err := common.ReadMessage(response.DataList, readSize, conn); err != nil {
-		return fmt.Errorf("error reading response: %v", err)
+		return common.ResponseData{}, fmt.Errorf("error reading response: %v", err)
 	}
 
-	return nil
+	return common.ResponseData{}, nil
+}
+
+// Handle responses from the server
+func handleResponse(response common.ResponseData, cli ClientState) {
+	header := response.Header
+
+	if header.Operation == "READ" {
+		cli.diskWrite <- response
+		return
+	}
+	log.Printf("%s\n", header.Result)
 }
 
 // initialize and start client
@@ -148,15 +166,18 @@ func startClient(ip string, port string, interactive bool) (ClientState, error) 
 
 	// default to non-interactive worker count
 	netWorkers := 1
-	diskWorkers := 1
+	diskReaders := 1
+	diskWriters := 1
 	respWorkers := 1
 	if interactive == true {
 		netWorkers = 3
-		diskWorkers = 3
+		diskReaders = 3
+		diskWriters = 3
 		respWorkers = 3
 	}
 
-	client.disk = make(chan common.ClientData)
+	client.diskWrite = make(chan common.ResponseData)
+	client.diskRead = make(chan common.ClientData)
 	client.send = make(chan common.ClientData)
 	client.read = make(chan net.Conn)
 
@@ -171,12 +192,23 @@ func startClient(ip string, port string, interactive bool) (ClientState, error) 
 		}(client)
 	}
 
-	for i := 0; i < diskWorkers; i++ {
+	for i := 0; i < diskReaders; i++ {
 		go func(cli ClientState) {
-			for data := range cli.disk {
-				err := doDiskIO(&data)
+			for data := range cli.diskRead {
+				err := doDiskRead(&data)
 				if err != nil {
 					log.Printf("unable to perform disk io: %v\n", err)
+				}
+			}
+		}(client)
+	}
+
+	for i := 0; i < diskWriters; i++ {
+		go func(cli ClientState) {
+			for data := range cli.diskWrite {
+				err := doDiskWrite(&data)
+				if err != nil {
+					log.Printf("unable to perform disk write: %v\n", err)
 				}
 			}
 		}(client)
@@ -185,9 +217,11 @@ func startClient(ip string, port string, interactive bool) (ClientState, error) 
 	for i := 0; i < respWorkers; i++ {
 		go func(cli ClientState) {
 			for data := range cli.read {
-				err := readResponse(data)
+				response, err := readResponse(data)
 				if err != nil {
 					log.Printf("unable to read reasponse: %v\n", err)
+				} else {
+					handleResponse(response, cli)
 				}
 			}
 		}(client)
