@@ -200,11 +200,15 @@ func listFiles(data common.ClientData) (common.ResponseData, error) {
 		return common.ResponseData{}, err
 	}
 
-	var resp string
+	var size int
+	dataList := list.New()
 	for _, file := range files {
-		resp = resp + file.Name() + "\n"
+		byteName := []byte(file.Name())
+		dataList.PushBack(common.Data{len(byteName), byteName})
+		size += len(byteName)
 	}
-	return createResponseData("LIST", resp, "", 0, nil, data.Conn), nil
+	common.DebugLog("size: %d\n", uint64(size))
+	return createResponseData("LIST", "got list", "", uint64(size), dataList, data.Conn), nil
 }
 
 // Send the response and close the connection

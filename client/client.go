@@ -167,12 +167,19 @@ func readResponse(conn net.Conn) (common.ResponseData, error) {
 // Handle responses from the server
 func handleResponse(response common.ResponseData, cli *ClientState) {
 	header := response.Header
-	if header.Operation == "READ" {
-		cli.diskWrite <- response
-		return
-	}
 	common.DebugLog("response header: %v", header)
-	log.Printf("%s\n", header.Info)
+	switch header.Operation {
+	case "READ":
+		cli.diskWrite <- response
+	case "LIST":
+		dataList := response.DataList
+		for iter := dataList.Front(); iter != nil; iter = iter.Next() {
+			data := iter.Value.(common.Data)
+			log.Printf("%s", string(data.Buffer))
+		}
+	default:
+		log.Printf("%s\n", header.Info)
+	}
 }
 
 // initialize and start client

@@ -15,6 +15,7 @@ func TestCheckOperation(t *testing.T) {
 		{"WRITE", nil},
 		{"DELETE", nil},
 		{"LIST", nil},
+		{"ERROR", nil},
 	}
 
 	for _, test := range tests {
