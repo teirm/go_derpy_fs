@@ -127,12 +127,12 @@ func createAccount(data common.ClientData) (common.ResponseData, error) {
 		return common.ResponseData{}, err
 	}
 
-	err = os.Mkdir(accountPath, defaultPerms)
+	err = os.Mkdir(accountPath, os.FileMode(0744))
 	if err != nil {
 		return common.ResponseData{}, err
 	}
 
-	resp := fmt.Sprintf("account created: %s", account)
+	resp := fmt.Sprintf("account created %s", account)
 	return createResponseData("CREATE", resp, "", 0, nil, data.Conn), nil
 }
 
@@ -149,7 +149,7 @@ func writeFile(data common.ClientData) (common.ResponseData, error) {
 		return common.ResponseData{}, err
 	}
 
-	resp := fmt.Sprintf("wrote file: %s\n", fileName)
+	resp := fmt.Sprintf("wrote file %s", fileName)
 	return createResponseData("WRITE", resp, "", 0, nil, data.Conn), nil
 }
 
@@ -167,7 +167,7 @@ func readFile(data common.ClientData) (common.ResponseData, error) {
 		return common.ResponseData{}, err
 	}
 
-	resp := fmt.Sprintf("read file: %s\n", fileName)
+	resp := fmt.Sprintf("read file %s", fileName)
 	return createResponseData("READ", resp, fileName, size, dataList, data.Conn), nil
 }
 
@@ -213,6 +213,8 @@ func sendResponse(response common.ResponseData) {
 	if err := common.SendMessage(serializedHeader, response.DataList, response.Conn); err != nil {
 		log.Printf("ERROR: Failed to send message: %v\n", err)
 	}
+	common.DebugLog("Sent response: %v\n", response.Header)
+
 	// close the connection
 	if err := response.Conn.Close(); err != nil {
 		log.Printf("ERROR: unable to close connection: %v\n", err)

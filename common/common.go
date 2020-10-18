@@ -69,6 +69,8 @@ func DebugLog(format string, v ...interface{}) {
 
 // Serialize a header into a byte sequence
 func SerializeHeader(header Header) []byte {
+	DebugLog("Serializing Header: %v\n", header)
+	DebugLog("Serializing size: %d", header.Size)
 	sizeStr := strconv.FormatUint(header.Size, 10)
 	s := strings.Join([]string{header.Operation, header.Info, header.FileName, sizeStr}, ":")
 	return []byte(s + "\n")
@@ -106,6 +108,9 @@ func ReadHeader(conn net.Conn) (Header, error) {
 	}
 	DebugLog("header: %s\n", header)
 	fields, err := parseHeader(header, headerFields)
+	if err != nil {
+		return Header{}, err
+	}
 
 	operation := fields[0]
 	account := fields[1]
@@ -136,6 +141,8 @@ func CheckOperation(operation string) error {
 		return nil
 	case "LIST":
 		return nil
+	case "ERROR":
+		return nil
 	default:
 		return fmt.Errorf("Invalid operation: %s", operation)
 	}
@@ -144,7 +151,8 @@ func CheckOperation(operation string) error {
 func genWrite(buffer []byte, size int, writer io.Writer) error {
 	for size != 0 {
 		bytesWritten, err := writer.Write(buffer)
-		if err != nil {
+		DebugLog("bytes written: %d, size: %d\n", bytesWritten, size)
+		if err != nil && err != io.EOF {
 			return err
 		}
 		size -= bytesWritten
@@ -152,10 +160,11 @@ func genWrite(buffer []byte, size int, writer io.Writer) error {
 	return nil
 }
 
-func genRead(reader io.Reader) (Data, error) {
-	buffer := make([]byte, 1024)
+func genRead(size uint, reader io.Reader) (Data, error) {
+	buffer := make([]byte, size)
 	bytesRead, err := reader.Read(buffer)
-	if err != nil && err != io.EOF {
+	DebugLog("bytesRead: %d\n", bytesRead)
+	if err != nil {
 		return Data{}, err
 	}
 	return Data{bytesRead, buffer}, err
@@ -175,7 +184,8 @@ func ReadFile(name string, flags int, perm os.FileMode, dataList *list.List) (ui
 
 	bytesToRead := stat.Size()
 	for bytesToRead != 0 {
-		data, err := genRead(file)
+		chunk := computeChunk(uint64(bytesToRead))
+		data, err := genRead(chunk, file)
 		if err != nil && err != io.EOF {
 			break
 		}
@@ -194,29 +204,39 @@ func WriteFile(name string, flags int, perm os.FileMode, dataList *list.List) er
 	}
 	for iter := dataList.Front(); iter != nil; iter = iter.Next() {
 		// TODO: icky -- maybe write own linked list
-		fileData := iter.Value.(*Data)
+		fileData := iter.Value.(Data)
 		if err := genWrite(fileData.Buffer, fileData.Size, file); err != nil {
 			file.Close()
 			break
 		}
+		DebugLog("In write file")
 	}
 	return err
 }
 
+// Compute the read chunk size
+func computeChunk(bytesToRead uint64) uint {
+	if bytesToRead < 1024 {
+		return uint(bytesToRead)
+	} else if bytesToRead >= 1024 && bytesToRead < 4096 {
+		return 1024
+	} else {
+		return 4096
+	}
+}
+
 // Common function for reading a message from a connection
 func ReadMessage(dataList *list.List, bytesToRead uint64, conn net.Conn) error {
-	var err error
-	var data Data
-
 	for bytesToRead != 0 {
-		data, err = genRead(conn)
+		chunk := computeChunk(bytesToRead)
+		data, err := genRead(chunk, conn)
 		if err != nil && err != io.EOF {
 			break
 		}
 		dataList.PushBack(data)
 		bytesToRead -= uint64(data.Size)
 	}
-	return err
+	return nil
 }
 
 // Common function for writing a message to a connection
@@ -227,7 +247,7 @@ func SendMessage(header []byte, dataList *list.List, conn net.Conn) error {
 
 	if dataList != nil {
 		for iter := dataList.Front(); iter != nil; iter = iter.Next() {
-			data := iter.Value.(*Data)
+			data := iter.Value.(Data)
 			if err := genWrite(data.Buffer, data.Size, conn); err != nil {
 				return err
 			}

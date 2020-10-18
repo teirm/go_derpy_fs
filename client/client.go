@@ -8,6 +8,8 @@ import (
 	"log"
 	"net"
 	"os"
+	"path"
+	"sync"
 
 	"github.com/teirm/go_ftp/common"
 )
@@ -32,6 +34,7 @@ type ClientState struct {
 	diskRead  chan common.ClientData
 	send      chan common.ClientData
 	read      chan net.Conn
+	wg        sync.WaitGroup
 }
 
 // create conection to server
@@ -41,7 +44,7 @@ func connect(ip string, port string) (net.Conn, error) {
 }
 
 // performOperation
-func performOperation(config ClientConfig, client ClientState) error {
+func performOperation(config ClientConfig, client *ClientState) error {
 
 	account := config.account
 	fileName := config.file
@@ -61,38 +64,46 @@ func performOperation(config ClientConfig, client ClientState) error {
 }
 
 // do a create operation for a new account
-func doCreate(account string, client ClientState) {
+func doCreate(account string, client *ClientState) {
 	header := common.Header{"CREATE", account, "", 0}
+	client.wg.Add(2)
 	client.send <- common.ClientData{header, nil, client.conn}
 	client.read <- client.conn
 }
 
 // do a read operation
-func doRead(account string, fileName string, client ClientState) {
+func doRead(account string, fileName string, client *ClientState) {
 	header := common.Header{"READ", account, fileName, 0}
+	client.wg.Add(2)
 	client.send <- common.ClientData{header, nil, client.conn}
+	client.read <- client.conn
 }
 
 // do a write operation
-func doWrite(account string, fileName string, client ClientState) {
+func doWrite(account string, fileName string, client *ClientState) {
 	header := common.Header{"WRITE", account, fileName, 0}
+	client.wg.Add(1)
 	client.diskRead <- common.ClientData{header, nil, client.conn}
 }
 
 // do a delete operation
-func doDelete(account string, fileName string, client ClientState) {
+func doDelete(account string, fileName string, client *ClientState) {
 	header := common.Header{"DELETE", account, fileName, 0}
+	client.wg.Add(2)
 	client.send <- common.ClientData{header, nil, client.conn}
+	client.read <- client.conn
 }
 
 // do a list operation
-func doList(account string, client ClientState) {
+func doList(account string, client *ClientState) {
 	header := common.Header{"LIST", account, "", 0}
+	client.wg.Add(2)
 	client.send <- common.ClientData{header, nil, client.conn}
+	client.read <- client.conn
 }
 
 // Basic sanity checking on configuration
-func validateConfig(config ClientConfig) error {
+func validateConfig(config *ClientConfig) error {
 	if config.account == "" {
 		return fmt.Errorf("invalid account name: %s", config.account)
 	}
@@ -114,10 +125,12 @@ func sendMessage(data common.ClientData) error {
 func doDiskRead(data *common.ClientData) error {
 	flags := os.O_RDONLY
 	perms := os.FileMode(0644)
+	data.DataList = list.New()
 	size, err := common.ReadFile(data.Header.FileName, flags, perms, data.DataList)
 	if err != nil {
 		return err
 	}
+	data.Header.FileName = path.Base(data.Header.FileName)
 	data.Header.Size = size
 	return nil
 }
@@ -135,6 +148,7 @@ func doDiskWrite(data *common.ResponseData) error {
 func readResponse(conn net.Conn) (common.ResponseData, error) {
 	responseHeader, err := common.ReadHeader(conn)
 	if err != nil {
+		common.DebugLog("Error reading response header: %v\n", err)
 		return common.ResponseData{}, err
 	}
 	var response common.ResponseData
@@ -147,22 +161,22 @@ func readResponse(conn net.Conn) (common.ResponseData, error) {
 		return common.ResponseData{}, fmt.Errorf("error reading response: %v", err)
 	}
 
-	return common.ResponseData{}, nil
+	return response, nil
 }
 
 // Handle responses from the server
-func handleResponse(response common.ResponseData, cli ClientState) {
+func handleResponse(response common.ResponseData, cli *ClientState) {
 	header := response.Header
-
 	if header.Operation == "READ" {
 		cli.diskWrite <- response
 		return
 	}
+	common.DebugLog("response header: %v", header)
 	log.Printf("%s\n", header.Info)
 }
 
 // initialize and start client
-func startClient(ip string, port string, interactive bool) (ClientState, error) {
+func startClient(ip string, port string, interactive bool) (*ClientState, error) {
 	var client ClientState
 	var err error
 
@@ -172,7 +186,7 @@ func startClient(ip string, port string, interactive bool) (ClientState, error) 
 	client.conn, err = connect(ip, port)
 	if err != nil {
 		log.Printf("unable to connect to server: %v\n", err)
-		return ClientState{}, err
+		return nil, err
 	}
 
 	// default to non-interactive worker count
@@ -193,53 +207,62 @@ func startClient(ip string, port string, interactive bool) (ClientState, error) 
 	client.read = make(chan net.Conn)
 
 	for i := 0; i < netWorkers; i++ {
-		go func(cli ClientState) {
+		go func(cli *ClientState) {
 			for data := range cli.send {
+				common.DebugLog("%v\n", data)
 				err := sendMessage(data)
 				if err != nil {
 					log.Printf("unable to send message: %v\n", err)
 				}
+				cli.wg.Done()
 			}
-		}(client)
+		}(&client)
 	}
 
 	for i := 0; i < diskReaders; i++ {
-		go func(cli ClientState) {
+		go func(cli *ClientState) {
 			for data := range cli.diskRead {
 				err := doDiskRead(&data)
 				if err != nil {
 					log.Printf("unable to perform disk io: %v\n", err)
 				}
+				cli.wg.Add(2)
 				cli.send <- data
+				cli.read <- data.Conn
+				cli.wg.Done()
 			}
-		}(client)
+		}(&client)
 	}
 
 	for i := 0; i < diskWriters; i++ {
-		go func(cli ClientState) {
+		go func(cli *ClientState) {
 			for data := range cli.diskWrite {
 				err := doDiskWrite(&data)
 				if err != nil {
 					log.Printf("unable to perform disk write: %v\n", err)
 				}
+				cli.wg.Done()
 			}
-		}(client)
+		}(&client)
 	}
 
 	for i := 0; i < respWorkers; i++ {
-		go func(cli ClientState) {
+		go func(cli *ClientState) {
+			common.DebugLog("In response loop\n")
 			for data := range cli.read {
+				common.DebugLog("Received data to read\n")
 				response, err := readResponse(data)
 				if err != nil {
-					log.Printf("unable to read reasponse: %v\n", err)
+					log.Printf("unable to read response: %v\n", err)
 				} else {
 					handleResponse(response, cli)
 				}
+				cli.wg.Done()
 			}
-		}(client)
+		}(&client)
 	}
 
-	return client, nil
+	return &client, nil
 }
 
 func main() {
@@ -260,6 +283,8 @@ func main() {
 	}
 
 	err = performOperation(config, cli)
+
+	cli.wg.Wait()
 	if err != nil {
 		os.Exit(1)
 	} else {
