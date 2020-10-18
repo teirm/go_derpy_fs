@@ -133,7 +133,7 @@ func doDiskWrite(data *common.ResponseData) error {
 
 // Read responses from the server
 func readResponse(conn net.Conn) (common.ResponseData, error) {
-	responseHeader, err := common.ReadResponseHeader(conn)
+	responseHeader, err := common.ReadHeader(conn)
 	if err != nil {
 		return common.ResponseData{}, err
 	}
@@ -158,7 +158,7 @@ func handleResponse(response common.ResponseData, cli ClientState) {
 		cli.diskWrite <- response
 		return
 	}
-	log.Printf("%s\n", header.Result)
+	log.Printf("%s\n", header.Info)
 }
 
 // initialize and start client

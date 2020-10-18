@@ -61,7 +61,7 @@ func handleConnection(connection net.Conn, svr Server) error {
 
 // create a ResponseData
 func createResponseData(op string, result string, fileName string, size uint64, dataList *list.List, conn net.Conn) common.ResponseData {
-	header := common.ResponseHeader{op, result, fileName, size}
+	header := common.Header{op, result, fileName, size}
 	return common.ResponseData{header, dataList, conn}
 }
 
@@ -116,7 +116,7 @@ func checkExistence(path string) (bool, error) {
 // By definition, an account will just be a
 // new directory
 func createAccount(data common.ClientData) (common.ResponseData, error) {
-	account := data.Header.Account
+	account := data.Header.Info
 	accountPath := path.Join(accountRoot, account)
 	exists, err := checkExistence(accountPath)
 	if err != nil {
@@ -140,7 +140,7 @@ func createAccount(data common.ClientData) (common.ResponseData, error) {
 //
 // Write will fail if the file exists already
 func writeFile(data common.ClientData) (common.ResponseData, error) {
-	account := data.Header.Account
+	account := data.Header.Info
 	fileName := data.Header.FileName
 	filePath := path.Join(accountRoot, account, fileName)
 
@@ -157,7 +157,7 @@ func writeFile(data common.ClientData) (common.ResponseData, error) {
 //
 // Read will fail if the file does not exist
 func readFile(data common.ClientData) (common.ResponseData, error) {
-	account := data.Header.Account
+	account := data.Header.Info
 	fileName := data.Header.FileName
 	filePath := path.Join(accountRoot, account, fileName)
 
@@ -175,7 +175,7 @@ func readFile(data common.ClientData) (common.ResponseData, error) {
 //
 // Delete will fail if the file does not exist
 func deleteFile(data common.ClientData) (common.ResponseData, error) {
-	account := data.Header.Account
+	account := data.Header.Info
 	fileName := data.Header.FileName
 	filePath := path.Join(accountRoot, account, fileName)
 
@@ -192,7 +192,7 @@ func deleteFile(data common.ClientData) (common.ResponseData, error) {
 //
 // List will fail if the account is not present
 func listFiles(data common.ClientData) (common.ResponseData, error) {
-	account := data.Header.Account
+	account := data.Header.Info
 	accountPath := path.Join(accountRoot, account)
 
 	files, err := ioutil.ReadDir(accountPath)
@@ -209,7 +209,7 @@ func listFiles(data common.ClientData) (common.ResponseData, error) {
 
 // Send the response and close the connection
 func sendResponse(response common.ResponseData) {
-	serializedHeader := common.SerializeResponseHeader(response.Header)
+	serializedHeader := common.SerializeHeader(response.Header)
 	if err := common.SendMessage(serializedHeader, response.DataList, response.Conn); err != nil {
 		log.Printf("ERROR: Failed to send message: %v\n", err)
 	}

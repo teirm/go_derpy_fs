@@ -19,7 +19,7 @@ import (
 // Header information describing client data
 type Header struct {
 	Operation string
-	Account   string
+	Info      string
 	FileName  string
 	Size      uint64
 }
@@ -45,7 +45,7 @@ type ClientData struct {
 
 // ResponseData Information to return to the client
 type ResponseData struct {
-	Header   ResponseHeader
+	Header   Header
 	DataList *list.List
 	Conn     net.Conn
 }
@@ -63,21 +63,26 @@ func AddCommonFlags() {
 
 func DebugLog(format string, v ...interface{}) {
 	if isDebug == true {
-		log.Printf(format, v)
+		log.Printf(format, v...)
 	}
 }
 
 // Serialize a header into a byte sequence
 func SerializeHeader(header Header) []byte {
 	sizeStr := strconv.FormatUint(header.Size, 10)
-	s := strings.Join([]string{header.Operation, header.Account, header.FileName, sizeStr}, ":")
+	s := strings.Join([]string{header.Operation, header.Info, header.FileName, sizeStr}, ":")
 	return []byte(s + "\n")
 }
 
-func SerializeResponseHeader(header ResponseHeader) []byte {
-	sizeStr := strconv.FormatUint(header.Size, 10)
-	s := strings.Join([]string{header.Operation, header.Result, header.FileName, sizeStr}, ":")
-	return []byte(s + "\n")
+// Parse the header string into component fields
+func parseHeader(header string, fieldCount int) ([]string, error) {
+	strippedHeader := strings.TrimSuffix(header, "\n")
+	fields := strings.Split(strippedHeader, ":")
+	if len(fields) != fieldCount {
+		err := fmt.Errorf("invalid response header: %s", header)
+		return []string{}, err
+	}
+	return fields, nil
 }
 
 // Parse the header information beginning every message
@@ -89,7 +94,6 @@ func SerializeResponseHeader(header ResponseHeader) []byte {
 //
 //   operation	string
 //   account	string
-//	 result		string
 //	 fileName	string
 //   size		uint64
 //
@@ -101,15 +105,10 @@ func ReadHeader(conn net.Conn) (Header, error) {
 		return Header{}, err
 	}
 	DebugLog("header: %s\n", header)
-	strippedHeader := strings.TrimSuffix(header, "\n")
-	fields := strings.Split(strippedHeader, ":")
-	if len(fields) != headerFields {
-		err := fmt.Errorf("invalid header: %s", header)
-		return Header{}, err
-	}
+	fields, err := parseHeader(header, headerFields)
 
 	operation := fields[0]
-	identity := fields[1]
+	account := fields[1]
 	fileName := fields[2]
 	size, err := strconv.ParseUint(fields[3], 10, 64)
 	if err != nil {
@@ -121,41 +120,7 @@ func ReadHeader(conn net.Conn) (Header, error) {
 		return Header{}, err
 	}
 
-	return Header{operation, identity, fileName, size}, nil
-}
-
-// Parse the response header information beginning every response
-// from server-> client
-//
-// Response Header Format:
-//	 result:size
-//
-//   operation	string
-//	 result		string
-//   size		uint64
-//
-func ReadResponseHeader(conn net.Conn) (ResponseHeader, error) {
-	reader := bufio.NewReader(conn)
-	header, err := reader.ReadString('\n')
-	if err != nil {
-		return ResponseHeader{}, err
-	}
-	DebugLog("response header: %s\n", header)
-	strippedHeader := strings.TrimSuffix(header, "\n")
-	fields := strings.Split(strippedHeader, ":")
-	if len(fields) != responseHeaderFields {
-		err := fmt.Errorf("invalid response header: %s", header)
-		return ResponseHeader{}, err
-	}
-
-	operation := fields[0]
-	result := fields[1]
-	fileName := fields[2]
-	size, err := strconv.ParseUint(fields[3], 10, 64)
-	if err != nil {
-		return ResponseHeader{}, err
-	}
-	return ResponseHeader{operation, result, fileName, size}, nil
+	return Header{operation, account, fileName, size}, nil
 }
 
 // Check if the received operation is valid
