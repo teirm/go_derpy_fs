@@ -20,12 +20,11 @@ const (
 )
 
 type ClientConfig struct {
-	ip          string
-	port        string
-	account     string
-	op          string
-	file        string
-	interactive bool
+	ip      string
+	port    string
+	account string
+	op      string
+	file    string
 }
 
 type ClientState struct {
@@ -183,7 +182,7 @@ func handleResponse(response common.ResponseData, cli *ClientState) {
 }
 
 // initialize and start client
-func startClient(ip string, port string, interactive bool) (*ClientState, error) {
+func startClient(ip string, port string) (*ClientState, error) {
 	var client ClientState
 	var err error
 
@@ -201,12 +200,6 @@ func startClient(ip string, port string, interactive bool) (*ClientState, error)
 	diskReaders := 1
 	diskWriters := 1
 	respWorkers := 1
-	if interactive == true {
-		netWorkers = 3
-		diskReaders = 3
-		diskWriters = 3
-		respWorkers = 3
-	}
 
 	client.diskWrite = make(chan common.ResponseData)
 	client.diskRead = make(chan common.ClientData)
@@ -279,12 +272,11 @@ func main() {
 	flag.StringVar(&config.account, "account", "", "account to access")
 	flag.StringVar(&config.op, "op", "NOOP", "operation to perform")
 	flag.StringVar(&config.file, "file-name", "", "file to read or write into")
-	flag.BoolVar(&config.interactive, "interactive", false, "start an interactice session")
 	common.AddCommonFlags()
 
 	flag.Parse()
 
-	cli, err := startClient(config.ip, config.port, config.interactive)
+	cli, err := startClient(config.ip, config.port)
 	if err != nil {
 		os.Exit(1)
 	}
