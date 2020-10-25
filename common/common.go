@@ -24,13 +24,6 @@ type Header struct {
 	Size      uint64
 }
 
-type ResponseHeader struct {
-	Operation string
-	Result    string
-	FileName  string
-	Size      uint64
-}
-
 type Data struct {
 	Size   int
 	Buffer []byte
@@ -144,7 +137,7 @@ func CheckOperation(operation string) error {
 	case "ERROR":
 		return nil
 	default:
-		return fmt.Errorf("Invalid operation: %s", operation)
+		return fmt.Errorf("invalid operation: %s", operation)
 	}
 }
 

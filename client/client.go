@@ -104,7 +104,7 @@ func doList(account string, client *ClientState) {
 // Basic sanity checking on configuration
 func validateConfig(config *ClientConfig) error {
 	if config.account == "" {
-		return fmt.Errorf("invalid account name: %s", config.account)
+		return fmt.Errorf("invalid account name")
 	}
 
 	if err := common.CheckOperation(config.op); err != nil {
@@ -177,7 +177,7 @@ func handleResponse(response common.ResponseData, cli *ClientState) {
 			log.Printf("%s", string(data.Buffer))
 		}
 	default:
-		log.Printf("%s\n", header.Info)
+		log.Printf("header info: %s\n", header.Info)
 	}
 }
 

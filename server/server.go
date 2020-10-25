@@ -76,15 +76,15 @@ func handleIO(data common.ClientData, svr Server) error {
 	var err error
 	switch op {
 	case "CREATE":
-		res, err = createAccount(data)
+		res, err = createAccount(data.Header.Info, data.Conn)
 	case "WRITE":
-		res, err = writeFile(data)
+		res, err = writeFile(data.Header.Info, data.Header.FileName, data.DataList, data.Conn)
 	case "READ":
-		res, err = readFile(data)
+		res, err = readFile(data.Header.Info, data.Header.FileName, data.Conn)
 	case "DELETE":
-		res, err = deleteFile(data)
+		res, err = deleteFile(data.Header.Info, data.Header.FileName, data.Conn)
 	case "LIST":
-		res, err = listFiles(data)
+		res, err = listFiles(data.Header.Info, data.Conn)
 	default:
 		return fmt.Errorf("Invalid operation: %s", op)
 	}
@@ -115,8 +115,7 @@ func checkExistence(path string) (bool, error) {
 //
 // By definition, an account will just be a
 // new directory
-func createAccount(data common.ClientData) (common.ResponseData, error) {
-	account := data.Header.Info
+func createAccount(account string, conn net.Conn) (common.ResponseData, error) {
 	accountPath := path.Join(accountRoot, account)
 	exists, err := checkExistence(accountPath)
 	if err != nil {
@@ -133,32 +132,28 @@ func createAccount(data common.ClientData) (common.ResponseData, error) {
 	}
 
 	resp := fmt.Sprintf("account created %s", account)
-	return createResponseData("CREATE", resp, "", 0, nil, data.Conn), nil
+	return createResponseData("CREATE", resp, "", 0, nil, conn), nil
 }
 
 // Write a file under the given account
 //
 // Write will fail if the file exists already
-func writeFile(data common.ClientData) (common.ResponseData, error) {
-	account := data.Header.Info
-	fileName := data.Header.FileName
+func writeFile(account string, fileName string, dataList *list.List, conn net.Conn) (common.ResponseData, error) {
 	filePath := path.Join(accountRoot, account, fileName)
 
 	openFlags := os.O_APPEND | os.O_CREATE | os.O_WRONLY
-	if err := common.WriteFile(filePath, openFlags, defaultPerms, data.DataList); err != nil {
+	if err := common.WriteFile(filePath, openFlags, defaultPerms, dataList); err != nil {
 		return common.ResponseData{}, err
 	}
 
 	resp := fmt.Sprintf("wrote file %s", fileName)
-	return createResponseData("WRITE", resp, "", 0, nil, data.Conn), nil
+	return createResponseData("WRITE", resp, "", 0, nil, conn), nil
 }
 
 // Read a file under the given account
 //
 // Read will fail if the file does not exist
-func readFile(data common.ClientData) (common.ResponseData, error) {
-	account := data.Header.Info
-	fileName := data.Header.FileName
+func readFile(account string, fileName string, conn net.Conn) (common.ResponseData, error) {
 	filePath := path.Join(accountRoot, account, fileName)
 
 	dataList := list.New()
@@ -168,15 +163,13 @@ func readFile(data common.ClientData) (common.ResponseData, error) {
 	}
 
 	resp := fmt.Sprintf("read file %s", fileName)
-	return createResponseData("READ", resp, fileName, size, dataList, data.Conn), nil
+	return createResponseData("READ", resp, fileName, size, dataList, conn), nil
 }
 
 // Delete a file under the given account
 //
 // Delete will fail if the file does not exist
-func deleteFile(data common.ClientData) (common.ResponseData, error) {
-	account := data.Header.Info
-	fileName := data.Header.FileName
+func deleteFile(account string, fileName string, conn net.Conn) (common.ResponseData, error) {
 	filePath := path.Join(accountRoot, account, fileName)
 
 	err := os.Remove(filePath)
@@ -185,14 +178,13 @@ func deleteFile(data common.ClientData) (common.ResponseData, error) {
 	}
 
 	resp := fmt.Sprintf("deleted %s", fileName)
-	return createResponseData("DELETE", resp, "", 0, nil, data.Conn), nil
+	return createResponseData("DELETE", resp, "", 0, nil, conn), nil
 }
 
 // List files under an account
 //
 // List will fail if the account is not present
-func listFiles(data common.ClientData) (common.ResponseData, error) {
-	account := data.Header.Info
+func listFiles(account string, conn net.Conn) (common.ResponseData, error) {
 	accountPath := path.Join(accountRoot, account)
 
 	files, err := ioutil.ReadDir(accountPath)
@@ -208,7 +200,7 @@ func listFiles(data common.ClientData) (common.ResponseData, error) {
 		size += len(byteName)
 	}
 	common.DebugLog("size: %d\n", uint64(size))
-	return createResponseData("LIST", "got list", "", uint64(size), dataList, data.Conn), nil
+	return createResponseData("LIST", "got list", "", uint64(size), dataList, conn), nil
 }
 
 // Send the response and close the connection
